@@ -60,7 +60,7 @@ data RetrySettings = RetrySettings {
     , baseDelay  :: Int
     -- ^ The base delay in miliseconds. Defaults to 50. Without
     -- 'backoff', this is the delay. With 'backoff', this base delay
-    -- will grow by powers of 2 on each subsequent retry.
+    -- will grow by a factor of 2 on each subsequent retry.
     }
 
 
