@@ -82,11 +82,28 @@ delay RetrySettings{..} = baseDelay * 1000
 -- | Retry combinator for actions that don't raise exceptions, but
 -- signal in their type the outcome has failed. Examples are the
 -- 'Maybe', 'Either' and 'EitherT' monads.
+--
+-- Let's write a function that always fails and watch this combinator
+-- retry it 5 additional times following the initial run:
+--
+-- >>> import Data.Maybe
+-- >>> let f = putStrLn "Running action" >> return Nothing
+-- >>> retrying def isNothing f
+-- Running action
+-- Running action
+-- Running action
+-- Running action
+-- Running action
+-- Running action
+-- Nothing
+--
+-- Note how the latest failure result is returned after all retries
+-- have been exhausted.
 retrying :: MonadIO m
          => RetrySettings
          -> (b -> Bool)
          -- ^ A function to check whether the result should be
-         -- retried. If True, then we'll re-do the operation.
+         -- retried. If True, we delay and retry the operation.
          -> m b
          -- ^ Action to run
          -> m b
@@ -109,6 +126,19 @@ retrying set@RetrySettings{..} chk f = go 0
 
 -- | Retry ALL exceptions that may be raised. To be used with caution;
 -- this matches the exception on 'SomeException'.
+--
+-- See how the action below is run once and retried 5 more times
+-- before finally failing for good:
+--
+-- >>> let f = putStrLn "Running action" >> error "this is an error"
+-- >>> recoverAll def f
+-- Running action
+-- Running action
+-- Running action
+-- Running action
+-- Running action
+-- Running action
+-- *** Exception: this is an error
 recoverAll :: MonadCatchIO m
          => RetrySettings
          -> m a
