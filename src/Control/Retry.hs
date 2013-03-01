@@ -17,8 +17,10 @@
 -- some configurable delay for a configurable number of times.
 --
 -- The express purpose of this library is to make it easier to work
--- with IO and especially network IO sources that often experience
--- temporary failure that warrants retrying of the original action.
+-- with IO and especially network IO actions that often experience
+-- temporary failure that warrant retrying of the original action. For
+-- example, a database query may time out for a while, in which case
+-- we should delay a bit and retry the query.
 ----------------------------------------------------------------------------
 
 
@@ -97,7 +99,7 @@ delay RetrySettings{..} = baseDelay * 1000
 -- Running action
 -- Nothing
 --
--- Note how the latest failure result is returned after all retries
+-- Note how the latest failing result is returned after all retries
 -- have been exhausted.
 retrying :: MonadIO m
          => RetrySettings
