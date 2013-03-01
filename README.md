@@ -1,4 +1,4 @@
-# retry
+# retry - combinators for monadic actions that may fail
 
 ## About
 
@@ -14,5 +14,7 @@ database queries and large file uploads.
 
 Please see haddocks for documentation.
 
+## Author
 
+Ozgun Ataman, Soostone Inc
 
