@@ -44,7 +44,6 @@ import           Control.Exception     (SomeException)
 import           Control.Monad.CatchIO
 import           Control.Monad.Trans
 import           Data.Default
-import           Data.Generics
 import           Prelude               hiding (catch)
 -------------------------------------------------------------------------------
 
