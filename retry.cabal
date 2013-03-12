@@ -1,14 +1,28 @@
 name:                retry
+
+description: 
+
+        This package exposes combinators that can wrap arbitrary
+        monadic actions. They run the action and potentially retry
+        running it with some configurable delay for a configurable
+        number of times.
+
+        The purpose is to make it easier to work with IO and
+        especially network IO actions that often experience temporary
+        failure and warrant retrying of the original action. For
+        example, a database query may time out for a while, in which
+        case we should hang back for a bit and retry the query instead
+        of simply raising an exception.
+
 version:             0.1.0.0
 synopsis:            Retry combinators for monadic actions that may fail
 license:             BSD3
 license-file:        LICENSE
 author:              Ozgun Ataman
-maintainer:          oz@soostone.com
+maintainer:          ozgun.ataman@soostone.com
 copyright:           Ozgun Ataman, Soostone Inc
 category:            Control
 build-type:          Simple
--- extra-source-files:  
 cabal-version:       >=1.10
 
 library
@@ -21,3 +35,4 @@ library
     syb >= 0.3
   hs-source-dirs:      src
   default-language:    Haskell2010
+

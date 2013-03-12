@@ -6,11 +6,11 @@
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Control.Retry
--- Copyright   :  Ozgun Ataman <ozataman@gmail.com>
+-- Copyright   :  Ozgun Ataman <ozgun.ataman@soostone.com>
 -- License     :  BSD3
 --
 -- Maintainer  :  Ozgun Ataman
--- Stability   :  experimental
+-- Stability   :  provisional
 --
 -- This module exposes combinators that can wrap arbitrary monadic
 -- actions. They run the action and potentially retry running it with
