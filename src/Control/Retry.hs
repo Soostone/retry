@@ -38,6 +38,7 @@ module Control.Retry
 
     -- * Utilities
     , delay
+    , performDelay
     , flatDelay
     , backoffDelay
     ) where
@@ -131,7 +132,7 @@ retrying :: MonadIO m
 retrying set@RetrySettings{..} chk f = go 0
     where
       retry n = do
-          doDelay set n
+          performDelay set n
           go $! n+1
 
       go n = do
@@ -169,8 +170,9 @@ recoverAll set f = recovering set [h] f
       h = Handler $ \ (e :: SomeException) -> return True
 
 
--- | Perform delay for the nth retry
-doDelay set@RetrySettings{..} n =
+-- | Perform 'threadDelay' for the nth retry for the given settings.
+performDelay :: MonadIO m => RetrySettings -> Int -> m ()
+performDelay set@RetrySettings{..} n =
     if backoff
       then backoffDelay set n
       else flatDelay set n
@@ -190,7 +192,7 @@ recovering :: forall m a. MonadCatchIO m
 recovering set@RetrySettings{..} hs f = go 0
     where
       retry n = do
-          doDelay set n
+          performDelay set n
           go $! n+1
 
 
