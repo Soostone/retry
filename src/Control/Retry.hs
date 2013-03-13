@@ -28,6 +28,10 @@ module Control.Retry
     (
       -- * High Level Operation
       RetrySettings (..)
+    , RetryLimit
+    , limitedRetries
+    , unlimitedRetries
+
     , retrying
     , recovering
     , recoverAll
@@ -48,10 +52,26 @@ import           Prelude               hiding (catch)
 -------------------------------------------------------------------------------
 
 
+data RetryLimit = RLimit Int
+                | RNoLimit
+
+
+-- | Set a limited number of retries. Default in 'def' is 5.
+limitedRetries :: Int -> RetryLimit
+limitedRetries = RLimit
+
+
+-- | Set an unlimited number of retries. Note that with this option
+-- turned on, the combinator will keep retrying the action
+-- indefinitely and might essentially hang in some cases.
+unlimitedRetries :: RetryLimit
+unlimitedRetries = RNoLimit
+
+
 -- | Settings for retry behavior. Simply using 'def' for default
 -- values should work in most cases.
 data RetrySettings = RetrySettings {
-      numRetries :: Int
+      numRetries :: RetryLimit
     -- ^ Number of retries. Defaults to 5.
     , backoff    :: Bool
     -- ^ Whether to implement exponential backoff in retries. Defaults
@@ -64,7 +84,7 @@ data RetrySettings = RetrySettings {
 
 
 instance Default RetrySettings where
-    def = RetrySettings 5 True 50
+    def = RetrySettings (limitedRetries 5) True 50
 
 
 -- | Delay thread using backoff delay for the nth retry.
@@ -110,17 +130,17 @@ retrying :: MonadIO m
          -> m b
 retrying set@RetrySettings{..} chk f = go 0
     where
+      retry n = do
+          doDelay set n
+          go $! n+1
+
       go n = do
           res <- f
           case chk res of
             True ->
-              case n >= numRetries of
-                True -> return res
-                False -> do
-                    if backoff
-                      then backoffDelay set n
-                      else flatDelay set n
-                    go $! n+1
+              case numRetries of
+                RNoLimit -> retry n
+                RLimit lim -> if n >= lim then return res else retry n
             False -> return res
 
 
@@ -149,6 +169,13 @@ recoverAll set f = recovering set [h] f
       h = Handler $ \ (e :: SomeException) -> return True
 
 
+-- | Perform delay for the nth retry
+doDelay set@RetrySettings{..} n =
+    if backoff
+      then backoffDelay set n
+      else flatDelay set n
+
+
 -- | Run an action and recover from a raised exception by potentially
 -- retrying the action a number of times.
 recovering :: forall m a. MonadCatchIO m
@@ -162,6 +189,11 @@ recovering :: forall m a. MonadCatchIO m
            -> m a
 recovering set@RetrySettings{..} hs f = go 0
     where
+      retry n = do
+          doDelay set n
+          go $! n+1
+
+
       -- | Convert a (e -> m Bool) handler into (e -> m a) so it can
       -- be wired into the 'catches' combinator.
       transHandler :: Int -> Handler m Bool -> Handler m a
@@ -169,24 +201,10 @@ recovering set@RetrySettings{..} hs f = go 0
           chk <- h e
           case chk of
             True ->
-              case n >= numRetries of
-                True -> throw e
-                False -> do
-                    if backoff
-                      then backoffDelay set n
-                      else flatDelay set n
-                    go $! n+1
+              case numRetries of
+                RNoLimit -> retry n
+                RLimit lim -> if n >= lim then throw e else retry n
             False -> throw e
-
-      -- handle :: forall e. Exception e => Handler m Bool -> Int -> e -> m a
-      -- handle (Handler h) n e = do
-      --     chk <- h e
-      --     case chk of
-      --       True ->
-      --         case n >= numRetries of
-      --           True -> throw e
-      --           False -> if backoff then backoffRetry n else flatRetry n
-      --       False -> throw e
 
       go n = f `catches` map (transHandler n) hs
 
