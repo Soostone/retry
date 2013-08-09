@@ -3,6 +3,7 @@
 {-# LANGUAGE RankNTypes          #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE FlexibleContexts    #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Control.Retry
@@ -45,9 +46,9 @@ module Control.Retry
 
 -------------------------------------------------------------------------------
 import           Control.Concurrent
-import           Control.Exception     (SomeException)
-import           Control.Monad.CatchIO
-import           Control.Monad.Trans
+import           Control.Exception.Lifted
+import           Control.Monad.IO.Class
+import           Control.Monad.Trans.Control
 import           Data.Default
 import           Prelude               hiding (catch)
 -------------------------------------------------------------------------------
@@ -94,7 +95,7 @@ backoffDelay set@RetrySettings{..} !n = liftIO (threadDelay (2^n * delay set))
 
 -- | Delay thread using flat delay
 flatDelay :: MonadIO m => RetrySettings -> t -> m ()
-flatDelay set@RetrySettings{..} !n = liftIO (threadDelay $ delay set)
+flatDelay set@RetrySettings{..} !_ = liftIO (threadDelay $ delay set)
 
 -- | Delay in micro seconds
 delay :: RetrySettings -> Int
@@ -161,13 +162,13 @@ retrying set@RetrySettings{..} chk f = go 0
 -- Running action
 -- Running action
 -- *** Exception: this is an error
-recoverAll :: MonadCatchIO m
+recoverAll :: (MonadIO m, MonadBaseControl IO m)
          => RetrySettings
          -> m a
          -> m a
 recoverAll set f = recovering set [h] f
     where
-      h = Handler $ \ (e :: SomeException) -> return True
+      h = Handler $ \ (_ :: SomeException) -> return True
 
 
 -- | Perform 'threadDelay' for the nth retry for the given settings.
@@ -180,7 +181,7 @@ performDelay set@RetrySettings{..} n =
 
 -- | Run an action and recover from a raised exception by potentially
 -- retrying the action a number of times.
-recovering :: forall m a. MonadCatchIO m
+recovering :: forall m a. (MonadIO m, MonadBaseControl IO m)
            => RetrySettings
            -- ^ Just use 'def' faor default settings
            -> [Handler m Bool]
@@ -230,5 +231,3 @@ recovering set@RetrySettings{..} hs f = go 0
 --       f = putStrLn "Running action" >> throw AnotherException
 --       h1 = Handler $ \ (e :: TestException) -> return False
 --       h2 = Handler $ \ (e :: AnotherException) -> return True
-
-
