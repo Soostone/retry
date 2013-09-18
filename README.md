@@ -14,6 +14,17 @@ database queries and large file uploads.
 
 Please see haddocks for documentation.
 
+## Changes
+
+### 0.3
+
+Thanks to John Wiegley and Michael Snoyman for their contributions:
+
+- Now using monad-control instead of MonadCatchIO, which is widely
+  agreed to be broken. 
+- Now using transformers instead of mtl, which was a broader than
+  needed dependency.
+
 ## Author
 
 Ozgun Ataman, Soostone Inc

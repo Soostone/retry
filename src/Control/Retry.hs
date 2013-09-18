@@ -1,9 +1,11 @@
-{-# LANGUAGE BangPatterns        #-}
-{-# LANGUAGE DeriveDataTypeable  #-}
-{-# LANGUAGE RankNTypes          #-}
-{-# LANGUAGE RecordWildCards     #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE FlexibleContexts    #-}
+{-# LANGUAGE BangPatterns          #-}
+{-# LANGUAGE DeriveDataTypeable    #-}
+{-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE RankNTypes            #-}
+{-# LANGUAGE RecordWildCards       #-}
+{-# LANGUAGE ScopedTypeVariables   #-}
+
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Control.Retry
@@ -42,6 +44,7 @@ module Control.Retry
     , performDelay
     , flatDelay
     , backoffDelay
+    , backoffDelayFor
     ) where
 
 -------------------------------------------------------------------------------
@@ -50,7 +53,7 @@ import           Control.Exception.Lifted
 import           Control.Monad.IO.Class
 import           Control.Monad.Trans.Control
 import           Data.Default
-import           Prelude               hiding (catch)
+import           Prelude                     hiding (catch)
 -------------------------------------------------------------------------------
 
 
@@ -90,8 +93,19 @@ instance Default RetrySettings where
 
 
 -- | Delay thread using backoff delay for the nth retry.
-backoffDelay :: (Integral b, MonadIO m) => RetrySettings -> b -> m ()
-backoffDelay set@RetrySettings{..} !n = liftIO (threadDelay (2^n * delay set))
+backoffDelay :: MonadIO m => RetrySettings -> Int -> m ()
+backoffDelay set !n = liftIO . threadDelay $ backoffDelayFor (delay set) n
+
+
+-- | Delay for nth iteration of exponential backoff, in microseconds
+backoffDelayFor
+    :: Int
+    -- ^ Base delay in microseconds
+    -> Int
+    -- ^ Iteration number, starting at 0.
+    -> Int
+backoffDelayFor base n = 2^n * base
+
 
 -- | Delay thread using flat delay
 flatDelay :: MonadIO m => RetrySettings -> t -> m ()
