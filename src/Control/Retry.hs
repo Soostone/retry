@@ -31,7 +31,7 @@ module Control.Retry
     (
       -- * High Level Operation
       RetrySettings (..)
-    , RetryLimit
+    , RetryLimit(..)
     , limitedRetries
     , unlimitedRetries
 
