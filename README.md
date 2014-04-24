@@ -1,4 +1,6 @@
-# retry - combinators for monadic actions that may fail
+# README [![Build Status](https://travis-ci.org/Soostone/retry.svg?branch=master)](https://travis-ci.org/Soostone/retry)
+
+retry - combinators for monadic actions that may fail
 
 ## About
 
