@@ -49,11 +49,10 @@ module Control.Retry
 
 -------------------------------------------------------------------------------
 import           Control.Concurrent
-import           Control.Exception.Lifted
+import           Control.Monad.Catch
 import           Control.Monad.IO.Class
-import           Control.Monad.Trans.Control
 import           Data.Default
-import           Prelude                     hiding (catch)
+import           Prelude                hiding (catch)
 -------------------------------------------------------------------------------
 
 
@@ -176,7 +175,7 @@ retrying set@RetrySettings{..} chk f = go 0
 -- Running action
 -- Running action
 -- *** Exception: this is an error
-recoverAll :: (MonadIO m, MonadBaseControl IO m)
+recoverAll :: (MonadIO m, MonadCatch m)
          => RetrySettings
          -> m a
          -> m a
@@ -195,7 +194,7 @@ performDelay set@RetrySettings{..} n =
 
 -- | Run an action and recover from a raised exception by potentially
 -- retrying the action a number of times.
-recovering :: forall m a. (MonadIO m, MonadBaseControl IO m)
+recovering :: forall m a. (MonadIO m, MonadCatch m)
            => RetrySettings
            -- ^ Just use 'def' faor default settings
            -> [Handler m Bool]
@@ -220,8 +219,8 @@ recovering set@RetrySettings{..} hs f = go 0
             True ->
               case numRetries of
                 RNoLimit -> retry n
-                RLimit lim -> if n >= lim then throw e else retry n
-            False -> throw e
+                RLimit lim -> if n >= lim then throwM e else retry n
+            False -> throwM e
 
       go n = f `catches` map (transHandler n) hs
 

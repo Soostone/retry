@@ -16,6 +16,12 @@ Please see haddocks for documentation.
 
 ## Changes
 
+### 0.4
+
+- Transitioned to using Edward Kmett's exceptions package instead of
+  monad-control. Use 0.3 series if you still need monad-control
+  support.
+
 ### 0.3
 
 Thanks to John Wiegley and Michael Snoyman for their contributions:

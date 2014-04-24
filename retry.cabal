@@ -14,7 +14,7 @@ description:
         case we should hang back for a bit and retry the query instead
         of simply raising an exception.
 
-version:             0.3.0.2
+version:             0.4
 synopsis:            Retry combinators for monadic actions that may fail
 license:             BSD3
 license-file:        LICENSE
@@ -28,9 +28,8 @@ cabal-version:       >=1.10
 library
   exposed-modules:     Control.Retry
   build-depends:       
-    base ==4.*, 
-    monad-control,
-    lifted-base,
+    base            ==4.*, 
+    exceptions      >= 0.5 && < 0.6,
     transformers,
     data-default
   hs-source-dirs:      src
