@@ -51,7 +51,7 @@ module Control.Retry
 import           Control.Concurrent
 import           Control.Monad.Catch
 import           Control.Monad.IO.Class
-import           Data.Default
+import           Data.Default.Class
 import           Prelude                hiding (catch)
 -------------------------------------------------------------------------------
 
