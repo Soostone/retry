@@ -1,5 +1,4 @@
 {-# LANGUAGE BangPatterns          #-}
-{-# LANGUAGE DeriveDataTypeable    #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RankNTypes            #-}
@@ -51,7 +50,7 @@ module Control.Retry
 import           Control.Concurrent
 import           Control.Monad.Catch
 import           Control.Monad.IO.Class
-import           Data.Default
+import           Data.Default.Class
 import           Prelude                hiding (catch)
 -------------------------------------------------------------------------------
 
@@ -223,6 +222,7 @@ recovering set@RetrySettings{..} hs f = go 0
             False -> throwM e
 
       go n = f `catches` map (transHandler n) hs
+
 
 
 
