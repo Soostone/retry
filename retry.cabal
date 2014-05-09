@@ -30,7 +30,7 @@ library
   exposed-modules:     Control.Retry
   build-depends:       
     base            ==4.*, 
-    exceptions      >= 0.5 && < 0.6,
+    exceptions      >= 0.5 && < 0.7,
     transformers,
     data-default-class
   hs-source-dirs:      src
