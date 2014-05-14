@@ -37,3 +37,12 @@ Thanks to John Wiegley and Michael Snoyman for their contributions:
 
 Ozgun Ataman, Soostone Inc
 
+
+## Contributors
+
+Contributors, please list yourself here.
+
+- Mitsutoshi Aoe (@maoe)
+- John Wiegley
+- Michael Snoyman
+
