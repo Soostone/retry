@@ -26,7 +26,7 @@ spec = parallel $ describe "retry" $ do
   it "recovering test without quadratic retry delay"
      . property . monadicIO $ do
     startTime <- run getCurrentTime
-    timeout <- (+2) . getSmall . getPositive <$> pick arbitrary
+    timeout <- pick . choose $ (0,15)
     retries <- getSmall . getPositive <$> pick arbitrary
     res <- run . try $ recovering (RetrySettings (RLimit retries) False timeout)
                               [Handler (\(_::SomeException) -> return True)]

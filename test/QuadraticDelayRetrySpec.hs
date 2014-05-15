@@ -25,8 +25,8 @@ spec = parallel $ describe "quadratic delay" $ do
   it "recovering test with quadratic retry delay"
      . property . monadicIO $ do
     startTime <- run getCurrentTime
-    timeout <- (+2) . getSmall . getPositive <$> pick arbitrary
-    retries <- pick . choose $ (0,10)
+    timeout <- pick . choose $ (0,15)
+    retries <- pick . choose $ (0,8)
     res <- run . try $ recovering (RetrySettings (RLimit retries) True timeout)
                               [Handler (\(_::SomeException) -> return True)]
                               (throwM (userError "booo"))
