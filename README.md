@@ -20,8 +20,10 @@ Please see haddocks for documentation.
 
 ### 0.5
 
-- Mitsutoshi improved the `backoff` system by letting in user-defined
-  functions. Future direction may further increase this flexibility.
+- Mitsutoshi's backoff work inspired a complete redo of the
+  RetryPolicy interface, replacing it with a monoidal RetryPolicy. The
+  result is a much thinner API that actually provides much more power
+  to the end user.
 
 ### 0.4
 

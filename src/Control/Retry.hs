@@ -112,7 +112,7 @@ limitRetries i = RetryPolicy $ \ n -> if n >= i then Nothing else (Just 0)
 
 
 -------------------------------------------------------------------------------
--- | Delay for nth iteration of constant backoff, in microseconds
+-- | Implement a constant delay with unlimited retries.
 constantDelay
     :: Int
     -- ^ Base delay in microseconds
