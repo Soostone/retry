@@ -18,6 +18,11 @@ Please see haddocks for documentation.
 
 ## Changes
 
+### 0.5
+
+- Mitsutoshi improved the `backoff` system by letting in user-defined
+  functions. Future direction may further increase this flexibility.
+
 ### 0.4
 
 - Transitioned to using Edward Kmett's exceptions package instead of

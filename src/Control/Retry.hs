@@ -30,23 +30,22 @@
 module Control.Retry
     (
       -- * High Level Operation
-      RetrySettings (..)
-    , RetryLimit(..)
-    , limitedRetries
-    , unlimitedRetries
+      RetryPolicy (..)
 
     , retrying
     , recovering
     , recoverAll
 
-    -- * Backoff strategies
-    , constantBackoff
+    -- * Retry Policies
+    , constantDelay
     , exponentialBackoff
     , fibonacciBackoff
+    , limitRetries
 
-    -- * Utilities
-    , delay
-    , performDelay
+    -- * Re-export from Data.Monoid
+
+    , (<>)
+
     ) where
 
 -------------------------------------------------------------------------------
@@ -54,81 +53,95 @@ import           Control.Concurrent
 import           Control.Monad.Catch
 import           Control.Monad.IO.Class
 import           Data.Default.Class
+import           Data.Monoid
 import           Prelude                hiding (catch)
 -------------------------------------------------------------------------------
 
 
-data RetryLimit = RLimit Int
-                | RNoLimit
+-------------------------------------------------------------------------------
+-- | A 'RetryPolicy' is a function that takes an iteration number and
+-- possibly returns a delay in miliseconds. *Nothing* implies we have
+-- reached the retry limit.
+--
+-- Please note that 'RetryPolicy' is a 'Monoid'. You can collapse
+-- multiple strategies into one using 'mappend' or '<>'. The semantics
+-- of this combination are as follows:
+--
+-- 1. If either policy returns 'Nothing', the combined policy returns
+-- 'Nothing'. This can be used to @inhibit@ after a number of retries,
+-- for example.
+--
+-- 2. If both policies return a delay, the larger delay will be used.
+-- This is quite natural when combining multiple policies to achieve a
+-- certain effect.
+--
+-- Example:
+--
+-- One can easily define an exponential backoff policy with a limited
+-- number of retries:
+--
+-- >> limitedBackoff = exponentialBackoff 50 <> limitedRetries 5
+--
+-- Naturally, 'mempty' will retry immediately (delay 0) for an
+-- unlimited number of retries, forming the identity for the 'Monoid'.
+--
+-- The default under 'def' implements a constant 50ms delay, up to 5 times:
+--
+-- >> def = constantDelay 50000 <> limitRetries 5
+newtype RetryPolicy = RetryPolicy { getRetryPolicy :: Int -> Maybe Int }
 
 
--- | Set a limited number of retries. Default in 'def' is 5.
-limitedRetries :: Int -> RetryLimit
-limitedRetries = RLimit
+instance Default RetryPolicy where
+    def = constantDelay 50000 <> limitRetries 5
+
+instance Monoid RetryPolicy where
+    mempty = RetryPolicy $ (const (Just 0))
+    (RetryPolicy a) `mappend` (RetryPolicy b) = RetryPolicy $ \ n -> do
+      a' <- a n
+      b' <- b n
+      return $! max a' b'
 
 
--- | Set an unlimited number of retries. Note that with this option
--- turned on, the combinator will keep retrying the action
--- indefinitely and might essentially hang in some cases.
-unlimitedRetries :: RetryLimit
-unlimitedRetries = RNoLimit
+-------------------------------------------------------------------------------
+-- | Retry immediately, but only up to @n@ times.
+limitRetries
+    :: Int
+    -- ^ Maximum number of retries.
+    -> RetryPolicy
+limitRetries i = RetryPolicy $ \ n -> if n >= i then Nothing else (Just 0)
 
 
--- | Settings for retry behavior. Simply using 'def' for default
--- values should work in most cases.
-data RetrySettings = RetrySettings {
-      numRetries :: RetryLimit
-    -- ^ Number of retries. Defaults to 5.
-    , backoff    :: Int -> Int -> Int
-    -- ^ Backoff strategy. It takes a base delay and an iteration number
-    -- starting at 0. Defaults to 'exponentialBackoff'.
-    , baseDelay  :: Int
-    -- ^ The base delay in miliseconds. Defaults to 50. Without
-    -- 'backoff', this is the delay. With 'backoff', this base delay
-    -- will grow by a factor of 2 on each subsequent retry.
-    }
-
-
-instance Default RetrySettings where
-    def = RetrySettings (limitedRetries 5) exponentialBackoff 50
-
+-------------------------------------------------------------------------------
 -- | Delay for nth iteration of constant backoff, in microseconds
-constantBackoff
+constantDelay
     :: Int
     -- ^ Base delay in microseconds
-    -> Int
-    -- ^ Iteration number, starting at 0. This number doesn't affect the delay.
-    -> Int
-    -- ^ Delay in microseconds
-constantBackoff = const
+    -> RetryPolicy
+constantDelay delay = RetryPolicy (const (Just delay))
 
--- | Delay for nth iteration of exponential backoff, in microseconds
+
+-------------------------------------------------------------------------------
+-- | Grow delay exponentially each iteration.
 exponentialBackoff
     :: Int
     -- ^ Base delay in microseconds
-    -> Int
-    -- ^ Iteration number, starting at 0.
-    -> Int
-    -- ^ Delay in microseconds
-exponentialBackoff base n = 2^n * base
+    -> RetryPolicy
+exponentialBackoff base = RetryPolicy $ \ n -> Just (2^n * base)
 
--- | Delay for nth iteration of fibonacci backoff, in microseconds
+
+-------------------------------------------------------------------------------
+-- | Implement Fibonacci backoff.
 fibonacciBackoff
     :: Int
     -- ^ Base delay in microseconds
-    -> Int
-    -- ^ Iteration number, starting at 0.
-    -> Int
-    -- ^ Delay in microseconds
-fibonacciBackoff base n = fib (n + 1) (0, base)
+    -> RetryPolicy
+fibonacciBackoff base = RetryPolicy $ \ n -> Just $ fib (n + 1) (0, base)
     where
       fib 0 (a, _) = a
       fib !m (!a, !b) = fib (m-1) (b, a + b)
 
--- | Delay in micro seconds
-delay :: RetrySettings -> Int
-delay RetrySettings{..} = baseDelay * 1000
 
+-------------------------------------------------------------------------------
 -- | Retry combinator for actions that don't raise exceptions, but
 -- signal in their type the outcome has failed. Examples are the
 -- 'Maybe', 'Either' and 'EitherT' monads.
@@ -150,30 +163,29 @@ delay RetrySettings{..} = baseDelay * 1000
 -- Note how the latest failing result is returned after all retries
 -- have been exhausted.
 retrying :: MonadIO m
-         => RetrySettings
+         => RetryPolicy
          -> (b -> Bool)
          -- ^ A function to check whether the result should be
          -- retried. If True, we delay and retry the operation.
          -> m b
          -- ^ Action to run
          -> m b
-retrying set@RetrySettings{..} chk f = go 0
+retrying (RetryPolicy policy) chk f = go 0
     where
-      retry n = do
-          performDelay set n
-          go $! n+1
-
       go n = do
           res <- f
           case chk res of
             True ->
-              case numRetries of
-                RNoLimit -> retry n
-                RLimit lim -> if n >= lim then return res else retry n
+              case (policy n) of
+                Just delay -> do
+                  liftIO (threadDelay delay)
+                  go $! n+1
+                Nothing -> return res
             False -> return res
 
 
 
+-------------------------------------------------------------------------------
 -- | Retry ALL exceptions that may be raised. To be used with caution;
 -- this matches the exception on 'SomeException'.
 --
@@ -190,7 +202,7 @@ retrying set@RetrySettings{..} chk f = go 0
 -- Running action
 -- *** Exception: this is an error
 recoverAll :: (MonadIO m, MonadCatch m)
-         => RetrySettings
+         => RetryPolicy
          -> m a
          -> m a
 recoverAll set f = recovering set [h] f
@@ -198,15 +210,11 @@ recoverAll set f = recovering set [h] f
       h = Handler $ \ (_ :: SomeException) -> return True
 
 
--- | Perform 'threadDelay' for the nth retry for the given settings.
-performDelay :: MonadIO m => RetrySettings -> Int -> m ()
-performDelay set@RetrySettings{..} =
-    liftIO . threadDelay . backoff (delay set)
-
+-------------------------------------------------------------------------------
 -- | Run an action and recover from a raised exception by potentially
 -- retrying the action a number of times.
 recovering :: forall m a. (MonadIO m, MonadCatch m)
-           => RetrySettings
+           => RetryPolicy
            -- ^ Just use 'def' faor default settings
            -> [Handler m Bool]
            -- ^ Should a given exception be retried? Action will be
@@ -214,12 +222,8 @@ recovering :: forall m a. (MonadIO m, MonadCatch m)
            -> m a
            -- ^ Action to perform
            -> m a
-recovering set@RetrySettings{..} hs f = go 0
+recovering (RetryPolicy policy) hs f = go 0
     where
-      retry n = do
-          performDelay set n
-          go $! n+1
-
 
       -- | Convert a (e -> m Bool) handler into (e -> m a) so it can
       -- be wired into the 'catches' combinator.
@@ -228,9 +232,11 @@ recovering set@RetrySettings{..} hs f = go 0
           chk <- h e
           case chk of
             True ->
-              case numRetries of
-                RNoLimit -> retry n
-                RLimit lim -> if n >= lim then throwM e else retry n
+              case policy n of
+                Just delay -> do
+                  liftIO (threadDelay delay)
+                  go $! n+1
+                Nothing -> throwM e
             False -> throwM e
 
       go n = f `catches` map (transHandler n) hs
@@ -252,6 +258,6 @@ recovering set@RetrySettings{..} hs f = go 0
 
 -- test = retrying def [h1,h2] f
 --     where
---       f = putStrLn "Running action" >> throw AnotherException
+--       f = putStrLn "Running action" >> throwM AnotherException
 --       h1 = Handler $ \ (e :: TestException) -> return False
 --       h2 = Handler $ \ (e :: AnotherException) -> return True
