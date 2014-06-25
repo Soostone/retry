@@ -87,6 +87,10 @@ import           Prelude                hiding (catch)
 -- The default under 'def' implements a constant 50ms delay, up to 5 times:
 --
 -- >> def = constantDelay 50000 <> limitRetries 5
+--
+-- For anything more complex, just define your own 'RetryPolicy':
+--
+-- >> myPolicy = RetryPolicy $ \ n -> if n > 10 then Just 1000 else Just 10000
 newtype RetryPolicy = RetryPolicy { getRetryPolicy :: Int -> Maybe Int }
 
 

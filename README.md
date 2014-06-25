@@ -24,6 +24,9 @@ Please see haddocks for documentation.
   RetryPolicy interface, replacing it with a monoidal RetryPolicy. The
   result is a much thinner API that actually provides much more power
   to the end user.
+- Now using microseconds in all premade policies. PLEASE TAKE CARE
+  WHEN UPGRADING. It was a bad idea to use miliseconds and deviate
+  from norms in the first place.
 
 ### 0.4
 
