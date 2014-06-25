@@ -39,12 +39,14 @@ module Control.Retry
     , recovering
     , recoverAll
 
+    -- * Backoff strategies
+    , constantBackoff
+    , exponentialBackoff
+    , fibonacciBackoff
+
     -- * Utilities
     , delay
     , performDelay
-    , flatDelay
-    , backoffDelay
-    , backoffDelayFor
     ) where
 
 -------------------------------------------------------------------------------
@@ -77,9 +79,9 @@ unlimitedRetries = RNoLimit
 data RetrySettings = RetrySettings {
       numRetries :: RetryLimit
     -- ^ Number of retries. Defaults to 5.
-    , backoff    :: Bool
-    -- ^ Whether to implement exponential backoff in retries. Defaults
-    -- to True.
+    , backoff    :: Int -> Int -> Int
+    -- ^ Backoff strategy. It takes a base delay and an iteration number
+    -- starting at 0. Defaults to 'exponentialBackoff'.
     , baseDelay  :: Int
     -- ^ The base delay in miliseconds. Defaults to 50. Without
     -- 'backoff', this is the delay. With 'backoff', this base delay
@@ -88,32 +90,44 @@ data RetrySettings = RetrySettings {
 
 
 instance Default RetrySettings where
-    def = RetrySettings (limitedRetries 5) True 50
+    def = RetrySettings (limitedRetries 5) exponentialBackoff 50
 
-
--- | Delay thread using backoff delay for the nth retry.
-backoffDelay :: MonadIO m => RetrySettings -> Int -> m ()
-backoffDelay set !n = liftIO . threadDelay $ backoffDelayFor (delay set) n
-
+-- | Delay for nth iteration of constant backoff, in microseconds
+constantBackoff
+    :: Int
+    -- ^ Base delay in microseconds
+    -> Int
+    -- ^ Iteration number, starting at 0. This number doesn't affect the delay.
+    -> Int
+    -- ^ Delay in microseconds
+constantBackoff = const
 
 -- | Delay for nth iteration of exponential backoff, in microseconds
-backoffDelayFor
+exponentialBackoff
     :: Int
     -- ^ Base delay in microseconds
     -> Int
     -- ^ Iteration number, starting at 0.
     -> Int
-backoffDelayFor base n = 2^n * base
+    -- ^ Delay in microseconds
+exponentialBackoff base n = 2^n * base
 
-
--- | Delay thread using flat delay
-flatDelay :: MonadIO m => RetrySettings -> t -> m ()
-flatDelay set@RetrySettings{..} !_ = liftIO (threadDelay $ delay set)
+-- | Delay for nth iteration of fibonacci backoff, in microseconds
+fibonacciBackoff
+    :: Int
+    -- ^ Base delay in microseconds
+    -> Int
+    -- ^ Iteration number, starting at 0.
+    -> Int
+    -- ^ Delay in microseconds
+fibonacciBackoff base n = fib (n + 1) (0, base)
+    where
+      fib 0 (a, _) = a
+      fib !m (!a, !b) = fib (m-1) (b, a + b)
 
 -- | Delay in micro seconds
 delay :: RetrySettings -> Int
 delay RetrySettings{..} = baseDelay * 1000
-
 
 -- | Retry combinator for actions that don't raise exceptions, but
 -- signal in their type the outcome has failed. Examples are the
@@ -186,11 +200,8 @@ recoverAll set f = recovering set [h] f
 
 -- | Perform 'threadDelay' for the nth retry for the given settings.
 performDelay :: MonadIO m => RetrySettings -> Int -> m ()
-performDelay set@RetrySettings{..} n =
-    if backoff
-      then backoffDelay set n
-      else flatDelay set n
-
+performDelay set@RetrySettings{..} =
+    liftIO . threadDelay . backoff (delay set)
 
 -- | Run an action and recover from a raised exception by potentially
 -- retrying the action a number of times.
