@@ -1,5 +1,4 @@
 {-# LANGUAGE BangPatterns          #-}
-{-# LANGUAGE DeriveDataTypeable    #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RankNTypes            #-}
@@ -240,6 +239,7 @@ recovering (RetryPolicy policy) hs f = go 0
             False -> throwM e
 
       go n = f `catches` map (transHandler n) hs
+
 
 
 
