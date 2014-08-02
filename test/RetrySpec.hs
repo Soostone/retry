@@ -29,7 +29,7 @@ spec = parallel $ describe "retry" $ do
     timeout <- pick . choose $ (0,15)
     retries <- getSmall . getPositive <$> pick arbitrary
     res <- run . try $ recovering (constantDelay timeout <> limitRetries retries)
-                              [Handler (\(_::SomeException) -> return True)]
+                              [const $ Handler (\(_::SomeException) -> return True)]
                               (throwM (userError "booo"))
     endTime <- run getCurrentTime
     QCM.assert (isLeftAnd isUserError res)

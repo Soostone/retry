@@ -167,9 +167,9 @@ fibonacciBackoff base = RetryPolicy $ \ n -> Just $ fib (n + 1) (0, base)
 -- have been exhausted.
 retrying :: MonadIO m
          => RetryPolicy
-         -> (b -> Bool)
-         -- ^ A function to check whether the result should be
-         -- retried. If True, we delay and retry the operation.
+         -> (Int -> b -> m Bool)
+         -- ^ An action to check whether the result should be retried.
+         -- If True, we delay and retry the operation.
          -> m b
          -- ^ Action to run
          -> m b
@@ -177,7 +177,8 @@ retrying (RetryPolicy policy) chk f = go 0
     where
       go n = do
           res <- f
-          case chk res of
+          chk' <- chk n res
+          case chk' of
             True ->
               case (policy n) of
                 Just delay -> do
@@ -210,7 +211,7 @@ recoverAll :: (MonadIO m, MonadCatch m)
          -> m a
 recoverAll set f = recovering set [h] f
     where
-      h = Handler $ \ (_ :: SomeException) -> return True
+      h _ = Handler $ \ (_ :: SomeException) -> return True
 
 
 -------------------------------------------------------------------------------
@@ -219,7 +220,7 @@ recoverAll set f = recovering set [h] f
 recovering :: forall m a. (MonadIO m, MonadCatch m)
            => RetryPolicy
            -- ^ Just use 'def' faor default settings
-           -> [Handler m Bool]
+           -> [(Int -> Handler m Bool)]
            -- ^ Should a given exception be retried? Action will be
            -- retried if this returns True.
            -> m a
@@ -242,7 +243,7 @@ recovering (RetryPolicy policy) hs f = go 0
                 Nothing -> throwM e
             False -> throwM e
 
-      go n = f `catches` map (transHandler n) hs
+      go n = f `catches` map (transHandler n . ($ n)) hs
 
 
 

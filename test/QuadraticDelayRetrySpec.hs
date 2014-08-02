@@ -28,7 +28,7 @@ spec = parallel $ describe "quadratic delay" $ do
     timeout <- pick . choose $ (0,15)
     retries <- pick . choose $ (0,8)
     res <- run . try $ recovering (exponentialBackoff timeout <> limitRetries retries)
-                              [Handler (\(_::SomeException) -> return True)]
+                              [const $ Handler (\(_::SomeException) -> return True)]
                               (throwM (userError "booo"))
     endTime <- run getCurrentTime
     QCM.assert (isLeftAnd isUserError res)
