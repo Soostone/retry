@@ -1,4 +1,4 @@
-# README [![Build Status](https://travis-ci.org/Soostone/retry.svg?branch=master)](https://travis-ci.org/Soostone/retry)
+# README [![Build Status](https://travis-ci.org/Soostone/retry.svg?branch=master)](https://travis-ci.org/Soostone/retry) [![Coverage Status](https://coveralls.io/repos/Soostone/retry/badge.png?branch=master)](https://coveralls.io/r/Soostone/retry?branch=master)
 
 retry - combinators for monadic actions that may fail
 
