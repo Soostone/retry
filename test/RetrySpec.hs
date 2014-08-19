@@ -4,12 +4,15 @@ module RetrySpec where
 
 -------------------------------------------------------------------------------
 import           Control.Applicative
+import           Control.Exception (MaskingState(..), getMaskingState)
 import           Control.Monad.Catch
 import           Control.Retry
 import           Data.Monoid
+import           Data.Default.Class (def)
 import           Data.Time.Clock
 import           Data.Time.LocalTime      ()
 import           System.IO.Error
+import           Test.HUnit (Test(TestCase), (@=?))
 import           Test.Hspec
 import           Test.Hspec.QuickCheck
 import           Test.QuickCheck
@@ -23,6 +26,9 @@ isLeftAnd f ei = case ei of
   Left v -> f v
   _      -> False
 
+testHandlers :: [Int -> Handler IO Bool]
+testHandlers = [const $ Handler (\(_::SomeException) -> return True)]
+
 {-# ANN spec ("HLint: ignore Redundant do"::String) #-}
 spec :: Spec
 spec = parallel $ describe "retry" $ do
@@ -33,7 +39,7 @@ spec = parallel $ describe "retry" $ do
     timeout <- pick . choose $ (0,15)
     retries <- getSmall . getPositive <$> pick arbitrary
     res <- run . try $ recovering (constantDelay timeout <> limitRetries retries)
-                              [const $ Handler (\(_::SomeException) -> return True)]
+                              testHandlers
                               (throwM (userError "booo"))
     endTime <- run getCurrentTime
     QCM.assert (isLeftAnd isUserError res)
@@ -62,3 +68,12 @@ spec = parallel $ describe "retry" $ do
 
     it "associativity" $
       prop3 (\x y z -> x <> (y <> z)) (\x y z -> (x <> y) <> z)
+
+  it "shouldn't change masking state when recovering" $ TestCase $ do
+    maskingState <- getMaskingState
+    shouldThrow
+      (recovering def testHandlers $ do
+        maskingState' <- getMaskingState
+        maskingState @=? maskingState'
+        fail "Retrying...")
+      anyIOException
