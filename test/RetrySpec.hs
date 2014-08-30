@@ -2,18 +2,21 @@
 
 module RetrySpec where
 
-import           Data.Monoid
+-------------------------------------------------------------------------------
 import           Control.Applicative
 import           Control.Monad.Catch
 import           Control.Retry
+import           Data.Monoid
 import           Data.Time.Clock
-import           Data.Time.LocalTime     ()
+import           Data.Time.LocalTime      ()
 import           System.IO.Error
 import           Test.Hspec
 import           Test.Hspec.QuickCheck
 import           Test.QuickCheck
-import           Test.QuickCheck.Monadic as QCM
-import           Test.QuickCheck.Function (apply)
+import           Test.QuickCheck.Function
+import           Test.QuickCheck.Monadic  as QCM
+-------------------------------------------------------------------------------
+
 
 isLeftAnd :: (a -> Bool) -> Either a b -> Bool
 isLeftAnd f ei = case ei of
@@ -40,13 +43,16 @@ spec = parallel $ describe "retry" $ do
   describe "Policy is a monoid" $ do
     let toPolicy = RetryPolicy . apply
     let prop left right  =
-          property $ \a x -> 
-                      let applyPolicy f = getRetryPolicy (f $ toPolicy a) x in
-                      applyPolicy left == applyPolicy right
+          property $ \a x ->
+            let applyPolicy f = getRetryPolicy (f $ toPolicy a) x
+                l = applyPolicy left
+                r = applyPolicy right
+                validRes = maybe True (>= 0)
+            in  (validRes r && validRes l) ==> l == r
     let prop3 left right  =
-          property $ \a b c x -> 
-                      let applyPolicy f = getRetryPolicy (f (toPolicy a) (toPolicy b) (toPolicy c)) x in
-                      applyPolicy left == applyPolicy right
+          property $ \a b c x ->
+            let applyPolicy f = getRetryPolicy (f (toPolicy a) (toPolicy b) (toPolicy c)) x
+            in applyPolicy left == applyPolicy right
 
     it "left identity" $
       prop (\p -> mempty <> p) id
