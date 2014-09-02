@@ -40,6 +40,7 @@ module Control.Retry
     , exponentialBackoff
     , fibonacciBackoff
     , limitRetries
+    , capDelay
 
     -- * Re-export from Data.Monoid
 
@@ -142,6 +143,17 @@ fibonacciBackoff base = RetryPolicy $ \ n -> Just $ fib (n + 1) (0, base)
     where
       fib 0 (a, _) = a
       fib !m (!a, !b) = fib (m-1) (b, a + b)
+
+
+-------------------------------------------------------------------------------
+-- | Set an upperbound for any delays that may be directed by the
+-- given policy.
+capDelay
+    :: Int
+    -- ^ A maximum delay in microseconds
+    -> RetryPolicy
+    -> RetryPolicy
+capDelay limit p = RetryPolicy $ \ n -> min limit `fmap` (getRetryPolicy p) n
 
 
 -------------------------------------------------------------------------------
