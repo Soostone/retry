@@ -34,7 +34,7 @@ spec = parallel $ describe "retry" $ do
     retries <- getSmall . getPositive <$> pick arbitrary
     res <- run . try $ recovering (constantDelay timeout <> limitRetries retries)
                               [const $ Handler (\(_::SomeException) -> return True)]
-                              (throwM (userError "booo"))
+                              (const $ throwM (userError "booo"))
     endTime <- run getCurrentTime
     QCM.assert (isLeftAnd isUserError res)
     let ms' = (fromInteger . toInteger $ (timeout * retries)) / 1000000.0

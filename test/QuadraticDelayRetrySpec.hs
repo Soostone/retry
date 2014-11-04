@@ -29,7 +29,7 @@ spec = parallel $ describe "quadratic delay" $ do
     retries <- pick . choose $ (0,8)
     res <- run . try $ recovering (exponentialBackoff timeout <> limitRetries retries)
                               [const $ Handler (\(_::SomeException) -> return True)]
-                              (throwM (userError "booo"))
+                              (const $ throwM (userError "booo"))
     endTime <- run getCurrentTime
     QCM.assert (isLeftAnd isUserError res)
     let tmo = if retries > 0 then timeout * 2 ^ (retries - 1) else 0
