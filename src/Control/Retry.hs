@@ -4,6 +4,7 @@
 {-# LANGUAGE RankNTypes            #-}
 {-# LANGUAGE RecordWildCards       #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE ViewPatterns          #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -238,24 +239,28 @@ recovering :: forall m a. (MonadIO m, MonadCatch m)
            -> m a
            -- ^ Action to perform
            -> m a
-recovering (RetryPolicy policy) hs f = go 0
+recovering (RetryPolicy policy) hs f = mask $ \restore -> go restore 0
     where
-
-      -- | Convert a (e -> m Bool) handler into (e -> m a) so it can
-      -- be wired into the 'catches' combinator.
-      transHandler :: Int -> Handler m Bool -> Handler m a
-      transHandler n (Handler h) = Handler $ \ e -> do
-          chk <- h e
-          case chk of
-            True ->
-              case policy n of
-                Just delay -> do
-                  liftIO (threadDelay delay)
-                  go $! n+1
-                Nothing -> throwM e
-            False -> throwM e
-
-      go n = f `catches` map (transHandler n . ($ n)) hs
+      go restore = loop
+        where
+          loop n = do
+            r <- try $ restore f
+            case r of
+              Right x -> return x
+              Left e -> recover (e :: SomeException) hs
+            where
+              recover e [] = throwM e
+              recover e ((($ n) -> Handler h) : hs')
+                | Just e' <- fromException e = do
+                    chk <- h e'
+                    if chk
+                      then case policy n of
+                        Just delay -> do
+                          liftIO $ threadDelay delay
+                          loop $! n+1
+                        Nothing -> throwM e'
+                      else throwM e'
+                | otherwise = recover e hs'
 
 
 
