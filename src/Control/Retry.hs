@@ -1,4 +1,5 @@
 {-# LANGUAGE BangPatterns          #-}
+{-# LANGUAGE CPP                   #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RankNTypes            #-}
@@ -218,7 +219,12 @@ retrying (RetryPolicy policy) chk f = go 0
 -- Running action
 -- Running action
 -- *** Exception: this is an error
-recoverAll :: (MonadIO m, MonadCatch m)
+recoverAll
+#if MIN_VERSION_exceptions(0, 6, 0)
+         :: (MonadIO m, MonadMask m)
+#else
+         :: (MonadIO m, MonadCatch m)
+#endif
          => RetryPolicy
          -> m a
          -> m a
@@ -230,7 +236,12 @@ recoverAll set f = recovering set [h] f
 -------------------------------------------------------------------------------
 -- | Run an action and recover from a raised exception by potentially
 -- retrying the action a number of times.
-recovering :: forall m a. (MonadIO m, MonadCatch m)
+recovering
+#if MIN_VERSION_exceptions(0, 6, 0)
+           :: forall m a. (MonadIO m, MonadMask m)
+#else
+           :: forall m a. (MonadIO m, MonadCatch m)
+#endif
            => RetryPolicy
            -- ^ Just use 'def' faor default settings
            -> [(Int -> Handler m Bool)]
