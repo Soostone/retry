@@ -12,7 +12,7 @@ import           Data.Default.Class (def)
 import           Data.Time.Clock
 import           Data.Time.LocalTime      ()
 import           System.IO.Error
-import           Test.HUnit (Test(TestCase), (@=?))
+import           Test.HUnit (Test(TestCase), (@?=))
 import           Test.Hspec
 import           Test.Hspec.QuickCheck
 import           Test.QuickCheck
@@ -69,11 +69,22 @@ spec = parallel $ describe "retry" $ do
     it "associativity" $
       prop3 (\x y z -> x <> (y <> z)) (\x y z -> (x <> y) <> z)
 
-  it "shouldn't change masking state when recovering" $ TestCase $ do
+  it "shouldn't change masking state in a recovered action" $ TestCase $ do
     maskingState <- getMaskingState
     shouldThrow
       (recovering def testHandlers $ do
         maskingState' <- getMaskingState
-        maskingState @=? maskingState'
+        maskingState' @?= maskingState
         fail "Retrying...")
+      anyIOException
+
+  it "should mask asynchronous exceptions in exception handlers" $ TestCase $ do
+    let checkMaskingStateHandlers =
+          [ const $ Handler $ \(_ :: SomeException) -> do
+              maskingState <- getMaskingState
+              maskingState @?= MaskedInterruptible
+              return True
+          ]
+    shouldThrow
+      (recovering def checkMaskingStateHandlers $ fail "Retrying...")
       anyIOException
