@@ -238,9 +238,9 @@ recoverAll set f = recovering set [h] f
 -- retrying the action a number of times.
 recovering
 #if MIN_VERSION_exceptions(0, 6, 0)
-           :: forall m a. (MonadIO m, MonadMask m)
+           :: (MonadIO m, MonadMask m)
 #else
-           :: forall m a. (MonadIO m, MonadCatch m)
+           :: (MonadIO m, MonadCatch m)
 #endif
            => RetryPolicy
            -- ^ Just use 'def' faor default settings
