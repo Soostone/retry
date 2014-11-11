@@ -69,7 +69,7 @@ spec = parallel $ describe "retry" $ do
     it "associativity" $
       prop3 (\x y z -> x <> (y <> z)) (\x y z -> (x <> y) <> z)
 
-  it "shouldn't change masking state in a recovered action" $ TestCase $ do
+  it "shouldn't change masking state in a recovered action" $ do
     maskingState <- getMaskingState
     shouldThrow
       (recovering def testHandlers $ do
@@ -78,7 +78,7 @@ spec = parallel $ describe "retry" $ do
         fail "Retrying...")
       anyIOException
 
-  it "should mask asynchronous exceptions in exception handlers" $ TestCase $ do
+  it "should mask asynchronous exceptions in exception handlers" $ do
     let checkMaskingStateHandlers =
           [ const $ Handler $ \(_ :: SomeException) -> do
               maskingState <- getMaskingState
