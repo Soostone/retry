@@ -60,7 +60,7 @@ import           Prelude                hiding (catch)
 
 -------------------------------------------------------------------------------
 -- | A 'RetryPolicy' is a function that takes an iteration number and
--- possibly returns a delay in miliseconds. *Nothing* implies we have
+-- possibly returns a delay in microseconds. *Nothing* implies we have
 -- reached the retry limit.
 --
 -- Please note that 'RetryPolicy' is a 'Monoid'. You can collapse
