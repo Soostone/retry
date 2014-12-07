@@ -80,7 +80,7 @@ import           Prelude                hiding (catch)
 -- One can easily define an exponential backoff policy with a limited
 -- number of retries:
 --
--- >> limitedBackoff = exponentialBackoff 50 <> limitedRetries 5
+-- >> limitedBackoff = exponentialBackoff 50 <> limitRetries 5
 --
 -- Naturally, 'mempty' will retry immediately (delay 0) for an
 -- unlimited number of retries, forming the identity for the 'Monoid'.
@@ -231,7 +231,7 @@ recoverAll set f = recovering set [h] f
 -- retrying the action a number of times.
 recovering :: forall m a. (MonadIO m, MonadCatch m)
            => RetryPolicy
-           -- ^ Just use 'def' faor default settings
+           -- ^ Just use 'def' for default settings
            -> [(Int -> Handler m Bool)]
            -- ^ Should a given exception be retried? Action will be
            -- retried if this returns True.
