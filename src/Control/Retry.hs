@@ -182,13 +182,13 @@ retrying :: MonadIO m
          -> (Int -> b -> m Bool)
          -- ^ An action to check whether the result should be retried.
          -- If True, we delay and retry the operation.
-         -> m b
+         -> (Int -> m b)
          -- ^ Action to run
          -> m b
 retrying (RetryPolicy policy) chk f = go 0
     where
       go n = do
-          res <- f
+          res <- f n
           chk' <- chk n res
           case chk' of
             True ->
@@ -219,7 +219,7 @@ retrying (RetryPolicy policy) chk f = go 0
 -- *** Exception: this is an error
 recoverAll :: (MonadIO m, MonadCatch m)
          => RetryPolicy
-         -> m a
+         -> (Int -> m a)
          -> m a
 recoverAll set f = recovering set [h] f
     where
@@ -235,7 +235,7 @@ recovering :: forall m a. (MonadIO m, MonadCatch m)
            -> [(Int -> Handler m Bool)]
            -- ^ Should a given exception be retried? Action will be
            -- retried if this returns True.
-           -> m a
+           -> (Int -> m a)
            -- ^ Action to perform
            -> m a
 recovering (RetryPolicy policy) hs f = go 0
@@ -255,7 +255,7 @@ recovering (RetryPolicy policy) hs f = go 0
                 Nothing -> throwM e
             False -> throwM e
 
-      go n = f `catches` map (transHandler n . ($ n)) hs
+      go n = f n `catches` map (transHandler n . ($ n)) hs
 
 
 
