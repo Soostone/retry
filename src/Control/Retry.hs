@@ -1,9 +1,11 @@
 {-# LANGUAGE BangPatterns          #-}
+{-# LANGUAGE CPP                   #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RankNTypes            #-}
 {-# LANGUAGE RecordWildCards       #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE ViewPatterns          #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -217,7 +219,12 @@ retrying (RetryPolicy policy) chk f = go 0
 -- Running action
 -- Running action
 -- *** Exception: this is an error
-recoverAll :: (MonadIO m, MonadCatch m)
+recoverAll
+#if MIN_VERSION_exceptions(0, 6, 0)
+         :: (MonadIO m, MonadMask m)
+#else
+         :: (MonadIO m, MonadCatch m)
+#endif
          => RetryPolicy
          -> m a
          -> m a
@@ -229,7 +236,12 @@ recoverAll set f = recovering set [h] f
 -------------------------------------------------------------------------------
 -- | Run an action and recover from a raised exception by potentially
 -- retrying the action a number of times.
-recovering :: forall m a. (MonadIO m, MonadCatch m)
+recovering
+#if MIN_VERSION_exceptions(0, 6, 0)
+           :: (MonadIO m, MonadMask m)
+#else
+           :: (MonadIO m, MonadCatch m)
+#endif
            => RetryPolicy
            -- ^ Just use 'def' for default settings
            -> [(Int -> Handler m Bool)]
@@ -238,24 +250,28 @@ recovering :: forall m a. (MonadIO m, MonadCatch m)
            -> m a
            -- ^ Action to perform
            -> m a
-recovering (RetryPolicy policy) hs f = go 0
+recovering (RetryPolicy policy) hs f = mask $ \restore -> go restore 0
     where
-
-      -- | Convert a (e -> m Bool) handler into (e -> m a) so it can
-      -- be wired into the 'catches' combinator.
-      transHandler :: Int -> Handler m Bool -> Handler m a
-      transHandler n (Handler h) = Handler $ \ e -> do
-          chk <- h e
-          case chk of
-            True ->
-              case policy n of
-                Just delay -> do
-                  liftIO (threadDelay delay)
-                  go $! n+1
-                Nothing -> throwM e
-            False -> throwM e
-
-      go n = f `catches` map (transHandler n . ($ n)) hs
+      go restore = loop
+        where
+          loop n = do
+            r <- try $ restore f
+            case r of
+              Right x -> return x
+              Left e -> recover (e :: SomeException) hs
+            where
+              recover e [] = throwM e
+              recover e ((($ n) -> Handler h) : hs')
+                | Just e' <- fromException e = do
+                    chk <- h e'
+                    if chk
+                      then case policy n of
+                        Just delay -> do
+                          liftIO $ threadDelay delay
+                          loop $! n+1
+                        Nothing -> throwM e'
+                      else throwM e'
+                | otherwise = recover e hs'
 
 
 
