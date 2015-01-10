@@ -18,6 +18,13 @@ Please see haddocks for documentation.
 
 ## Changes
 
+### 0.6
+
+- Actions are now retried in the original masking state, while
+  handlers continue to run in `MaskedInterruptible` (@maoe)
+- Added several tests confirming exception hierarchy semantics under
+  `recovering` (@ozataman)
+
 ### 0.5
 
 - Mitsutoshi's backoff work inspired a complete redo of the
