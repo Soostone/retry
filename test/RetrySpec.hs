@@ -112,6 +112,35 @@ spec = parallel $ describe "retry" $ do
       (res :: Either Custom2 ()) `shouldBe` Right ()
 
 
+    it "general exceptions catch specific ones" $ do
+      f <- mkFailN Custom2 2
+      res <- try $ recovering
+        (constantDelay 5000 <> limitRetries 5)
+        [ const $ Handler $ \ (_::SomeException) -> return True ]
+        f
+      (res :: Either Custom2 ()) `shouldBe` Right ()
+
+
+    it "(redundant) even general catchers don't go beyond policy" $ do
+      f <- mkFailN Custom2 3
+      res <- try $ recovering
+        (constantDelay 5000 <> limitRetries 2)
+        [ const $ Handler $ \ (_::SomeException) -> return True ]
+        f
+      (res :: Either Custom2 ()) `shouldBe` Left Custom2
+
+
+    it "works as expected in presence of failed exception casts" $ do
+      f <- mkFailN Custom2 3
+      flip shouldThrow anyException $ do
+        res <- try $ recovering
+          (constantDelay 5000 <> limitRetries 2)
+          [ const $ Handler $ \ (_::SomeException) -> return True ]
+          f
+        (res :: Either Custom1 ()) `shouldBe` Left Custom1
+
+
+
   describe "Policy is a monoid" $ do
     let toPolicy = RetryPolicy . apply
     let prop left right  =
