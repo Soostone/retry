@@ -36,6 +36,7 @@ module Control.Retry
     , retrying
     , recovering
     , recoverAll
+    , logRetries
 
     -- * Retry Policies
     , constantDelay
@@ -274,6 +275,24 @@ recovering (RetryPolicy policy) hs f = mask $ \restore -> go restore 0
                 | otherwise = recover e hs'
 
 
+-------------------------------------------------------------------------------
+-- | Helper function for constructing handler functions of the form required
+-- by 'recovering'.
+logRetries
+    :: (Monad m, Show e, Exception e)
+    => (e -> m Bool)
+    -- ^ Test for whether action is to be retried
+    -> (String -> m ())
+    -- ^ How to report the generated warning message.
+    -> Int
+    -- ^ Retry number
+    -> Handler m Bool
+logRetries f report n = Handler $ \ e -> do
+    res <- f e
+    let msg = "[retry:" <> show n <> "] Encountered " <> show e <> ". " <>
+              if res then "Retrying." else "Crashing."
+    report msg
+    return res
 
 
                               ------------------
