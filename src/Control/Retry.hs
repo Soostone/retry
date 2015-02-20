@@ -169,7 +169,7 @@ capDelay limit p = RetryPolicy $ \ n -> min limit `fmap` (getRetryPolicy p) n
 --
 -- >>> import Data.Maybe
 -- >>> let f = putStrLn "Running action" >> return Nothing
--- >>> retrying def isNothing f
+-- >>> retrying def (const $ return . isNothing) f
 -- Running action
 -- Running action
 -- Running action
