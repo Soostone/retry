@@ -43,6 +43,7 @@ module Control.Retry
     , exponentialBackoff
     , fibonacciBackoff
     , limitRetries
+    , limitRetriesByDelay
     , capDelay
 
     -- * Re-export from Data.Monoid
