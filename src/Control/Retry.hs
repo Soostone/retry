@@ -120,10 +120,12 @@ limitRetries i = RetryPolicy $ \ n -> if n >= i then Nothing else (Just 0)
 
 
 -------------------------------------------------------------------------------
--- | Retry immediately, but only up to @n@ times.
+-- | Add an upperbound to a policy such that once the given time-delay
+-- amount has been reached or exceeded, the policy will stop retrying
+-- and fail.
 limitRetriesByDelay
     :: Int
-    -- ^ Maximum number of retries.
+    -- ^ Time-delay limit in microseconds. 
     -> RetryPolicy
     -> RetryPolicy
 limitRetriesByDelay i p = RetryPolicy $ \ n -> getRetryPolicy p n >>= limit
@@ -162,12 +164,12 @@ fibonacciBackoff base = RetryPolicy $ \ n -> Just $ fib (n + 1) (0, base)
 
 
 -------------------------------------------------------------------------------
--- | Set an upperbound for any delays that may be directed by the
+-- | Set a time-upperbound for any delays that may be directed by the
 -- given policy.  This function does not terminate the retrying.  The policy
 -- `capDelay maxDelay (exponentialBackoff n)` will never stop retrying.  It
 -- will reach a state where it retries forever with a delay of `maxDelay`
 -- between each one.  To get termination you need to use one of the
--- limitRetries function variants.
+-- 'limitRetries' function variants.
 capDelay
     :: Int
     -- ^ A maximum delay in microseconds
