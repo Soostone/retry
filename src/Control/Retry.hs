@@ -45,7 +45,7 @@ module Control.Retry
     -- * Retry Policies
     , constantDelay
     , exponentialBackoff
-    , fullJitter
+    , fullJitterBackoff
     , fibonacciBackoff
     , limitRetries
     , limitRetriesByDelay
@@ -176,16 +176,17 @@ exponentialBackoff base = retryPolicy $ \ n -> Just (2^n * base)
 
 
 
--- temp = min(cap, base * 2 ** attempt)
--- sleep = temp / 2 + random_between(0, temp / 2)
 
 -------------------------------------------------------------------------------
 -- | FullJitter exponential backoff as explained in AWS Architecture
 -- Blog article.
 --
 -- @http:\/\/www.awsarchitectureblog.com\/2015\/03\/backoff.html@
-fullJitter :: MonadIO m => Int -> RetryPolicyM m
-fullJitter base = RetryPolicyM $ \n -> do
+-- 
+-- temp = min(cap, base * 2 ** attempt)
+-- sleep = temp / 2 + random_between(0, temp / 2)
+fullJitterBackoff :: MonadIO m => Int -> RetryPolicyM m
+fullJitterBackoff base = RetryPolicyM $ \n -> do
   let d = (2^n * base) `div` 2
   rand <- liftIO $ randomRIO (0, d)
   return $ Just $ d + rand
