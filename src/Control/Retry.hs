@@ -129,6 +129,8 @@ instance Monad m => Monoid (RetryPolicyM m) where
 
 
 -------------------------------------------------------------------------------
+-- | Helper for making simplified policies that don't use the monadic
+-- context.
 retryPolicy :: Monad m => (Int -> Maybe Int) -> RetryPolicyM m
 retryPolicy f = RetryPolicyM $ \ i -> return (f i)
 
@@ -184,6 +186,7 @@ exponentialBackoff base = retryPolicy $ \ n -> Just (2^n * base)
 -- @http:\/\/www.awsarchitectureblog.com\/2015\/03\/backoff.html@
 -- 
 -- temp = min(cap, base * 2 ** attempt)
+-- 
 -- sleep = temp / 2 + random_between(0, temp / 2)
 fullJitterBackoff :: MonadIO m => Int -> RetryPolicyM m
 fullJitterBackoff base = RetryPolicyM $ \n -> do
