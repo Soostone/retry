@@ -7,6 +7,7 @@ module RetrySpec where
 import           Control.Applicative
 import           Control.Exception        (MaskingState (..), getMaskingState)
 import           Control.Monad.Catch
+import           Control.Monad.IO.Class
 import           Data.Default.Class       (def)
 import           Data.IORef
 import           Data.Monoid
@@ -142,18 +143,24 @@ spec = parallel $ describe "retry" $ do
 
 
   describe "Policy is a monoid" $ do
-    let toPolicy = RetryPolicy . apply
+    let toPolicy = retryPolicy . apply
     let prop left right  =
           property $ \a x ->
-            let applyPolicy f = getRetryPolicy (f $ toPolicy a) x
-                l = applyPolicy left
-                r = applyPolicy right
+            let applyPolicy f = getRetryPolicyM (f $ toPolicy a) x
                 validRes = maybe True (>= 0)
-            in  (validRes r && validRes l) ==> l == r
+            in  monadicIO $ do
+                l <- liftIO $ applyPolicy left
+                r <- liftIO $ applyPolicy right
+                if validRes r && validRes l
+                  then assert (l == r)
+                  else return ()
+
     let prop3 left right  =
           property $ \a b c x ->
-            let applyPolicy f = getRetryPolicy (f (toPolicy a) (toPolicy b) (toPolicy c)) x
-            in applyPolicy left == applyPolicy right
+            let applyPolicy f = liftIO $ getRetryPolicyM (f (toPolicy a) (toPolicy b) (toPolicy c)) x
+            in monadicIO $ do
+                  res <- (==) <$> applyPolicy left <*> applyPolicy right
+                  assert res
 
     it "left identity" $
       prop (\p -> mempty <> p) id

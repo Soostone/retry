@@ -1,9 +1,6 @@
 {-# LANGUAGE BangPatterns          #-}
 {-# LANGUAGE CPP                   #-}
-{-# LANGUAGE FlexibleContexts      #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RankNTypes            #-}
-{-# LANGUAGE RecordWildCards       #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE ViewPatterns          #-}
 
@@ -31,7 +28,9 @@
 module Control.Retry
     (
       -- * High Level Operation
-      RetryPolicy (..)
+      RetryPolicyM (..)
+    , RetryPolicy
+    , retryPolicy
 
     , retrying
     , recovering
@@ -41,6 +40,7 @@ module Control.Retry
     -- * Retry Policies
     , constantDelay
     , exponentialBackoff
+    , fullJitterBackoff
     , fibonacciBackoff
     , limitRetries
     , limitRetriesByDelay
@@ -54,20 +54,24 @@ module Control.Retry
 
 -------------------------------------------------------------------------------
 import           Control.Concurrent
+import           Control.Monad
 import           Control.Monad.Catch
 import           Control.Monad.IO.Class
+import           Control.Monad.Trans.Maybe
 import           Data.Default.Class
+import           Data.Functor.Identity
+import           System.Random
 import           Data.Monoid
 import           Prelude                hiding (catch)
 -------------------------------------------------------------------------------
 
 
 -------------------------------------------------------------------------------
--- | A 'RetryPolicy' is a function that takes an iteration number and
+-- | A 'RetryPolicyM' is a function that takes an iteration number and
 -- possibly returns a delay in microseconds. *Nothing* implies we have
 -- reached the retry limit.
 --
--- Please note that 'RetryPolicy' is a 'Monoid'. You can collapse
+-- Please note that 'RetryPolicyM' is a 'Monoid'. You can collapse
 -- multiple strategies into one using 'mappend' or '<>'. The semantics
 -- of this combination are as follows:
 --
@@ -93,21 +97,37 @@ import           Prelude                hiding (catch)
 --
 -- >> def = constantDelay 50000 <> limitRetries 5
 --
--- For anything more complex, just define your own 'RetryPolicy':
+-- For anything more complex, just define your own 'RetryPolicyM':
 --
--- >> myPolicy = RetryPolicy $ \ n -> if n > 10 then Just 1000 else Just 10000
-newtype RetryPolicy = RetryPolicy { getRetryPolicy :: Int -> Maybe Int }
+-- >> myPolicy = retryPolicy $ \ n -> if n > 10 then Just 1000 else Just 10000
+--
+-- Since 0.7.
+newtype RetryPolicyM m = RetryPolicyM { getRetryPolicyM :: Int -> m (Maybe Int) }
 
 
-instance Default RetryPolicy where
+-- | Simplified 'RetryPolicyM' without any use of the monadic context in
+-- determining policy. Mostly maintains backwards compatitibility with
+-- type signatures pre-0.7.
+type RetryPolicy = forall m . Monad m => RetryPolicyM m
+
+
+instance Monad m => Default (RetryPolicyM m) where
     def = constantDelay 50000 <> limitRetries 5
 
-instance Monoid RetryPolicy where
-    mempty = RetryPolicy $ (const (Just 0))
-    (RetryPolicy a) `mappend` (RetryPolicy b) = RetryPolicy $ \ n -> do
-      a' <- a n
-      b' <- b n
+
+instance Monad m => Monoid (RetryPolicyM m) where
+    mempty = retryPolicy $ const (Just 0)
+    (RetryPolicyM a) `mappend` (RetryPolicyM b) = RetryPolicyM $ \ n -> runMaybeT $ do
+      a' <- MaybeT $ a n
+      b' <- MaybeT $ b n
       return $! max a' b'
+
+
+-------------------------------------------------------------------------------
+-- | Helper for making simplified policies that don't use the monadic
+-- context.
+retryPolicy :: (Int -> Maybe Int) -> RetryPolicy
+retryPolicy f = RetryPolicyM $ \ i -> return (f i)
 
 
 -------------------------------------------------------------------------------
@@ -116,7 +136,7 @@ limitRetries
     :: Int
     -- ^ Maximum number of retries.
     -> RetryPolicy
-limitRetries i = RetryPolicy $ \ n -> if n >= i then Nothing else (Just 0)
+limitRetries i = retryPolicy $ \ n -> if n >= i then Nothing else (Just 0)
 
 
 -------------------------------------------------------------------------------
@@ -124,11 +144,13 @@ limitRetries i = RetryPolicy $ \ n -> if n >= i then Nothing else (Just 0)
 -- amount has been reached or exceeded, the policy will stop retrying
 -- and fail.
 limitRetriesByDelay
-    :: Int
+    :: Monad m
+    => Int
     -- ^ Time-delay limit in microseconds. 
-    -> RetryPolicy
-    -> RetryPolicy
-limitRetriesByDelay i p = RetryPolicy $ \ n -> getRetryPolicy p n >>= limit
+    -> RetryPolicyM m
+    -> RetryPolicyM m
+limitRetriesByDelay i p = RetryPolicyM $ \ n -> 
+    (>>= limit) `liftM` getRetryPolicyM p n 
   where
     limit delay = if delay >= i then Nothing else Just delay
 
@@ -139,7 +161,7 @@ constantDelay
     :: Int
     -- ^ Base delay in microseconds
     -> RetryPolicy
-constantDelay delay = RetryPolicy (const (Just delay))
+constantDelay delay = retryPolicy (const (Just delay))
 
 
 -------------------------------------------------------------------------------
@@ -148,7 +170,24 @@ exponentialBackoff
     :: Int
     -- ^ Base delay in microseconds
     -> RetryPolicy
-exponentialBackoff base = RetryPolicy $ \ n -> Just (2^n * base)
+exponentialBackoff base = retryPolicy $ \ n -> Just (2^n * base)
+
+
+
+-------------------------------------------------------------------------------
+-- | FullJitter exponential backoff as explained in AWS Architecture
+-- Blog article.
+--
+-- @http:\/\/www.awsarchitectureblog.com\/2015\/03\/backoff.html@
+-- 
+-- temp = min(cap, base * 2 ** attempt)
+-- 
+-- sleep = temp / 2 + random_between(0, temp / 2)
+fullJitterBackoff :: MonadIO m => Int -> RetryPolicyM m
+fullJitterBackoff base = RetryPolicyM $ \n -> do
+  let d = (2^n * base) `div` 2
+  rand <- liftIO $ randomRIO (0, d)
+  return $ Just $! d + rand
 
 
 -------------------------------------------------------------------------------
@@ -157,7 +196,7 @@ fibonacciBackoff
     :: Int
     -- ^ Base delay in microseconds
     -> RetryPolicy
-fibonacciBackoff base = RetryPolicy $ \ n -> Just $ fib (n + 1) (0, base)
+fibonacciBackoff base = retryPolicy $ \ n -> Just $ fib (n + 1) (0, base)
     where
       fib 0 (a, _) = a
       fib !m (!a, !b) = fib (m-1) (b, a + b)
@@ -171,11 +210,13 @@ fibonacciBackoff base = RetryPolicy $ \ n -> Just $ fib (n + 1) (0, base)
 -- between each one.  To get termination you need to use one of the
 -- 'limitRetries' function variants.
 capDelay
-    :: Int
+    :: Monad m
+    => Int
     -- ^ A maximum delay in microseconds
-    -> RetryPolicy
-    -> RetryPolicy
-capDelay limit p = RetryPolicy $ \ n -> min limit `fmap` (getRetryPolicy p) n
+    -> RetryPolicyM m
+    -> RetryPolicyM m
+capDelay limit p = RetryPolicyM $ \ n -> 
+  (fmap (min limit)) `liftM` (getRetryPolicyM p) n
 
 
 -------------------------------------------------------------------------------
@@ -200,21 +241,22 @@ capDelay limit p = RetryPolicy $ \ n -> min limit `fmap` (getRetryPolicy p) n
 -- Note how the latest failing result is returned after all retries
 -- have been exhausted.
 retrying :: MonadIO m
-         => RetryPolicy
+         => RetryPolicyM m
          -> (Int -> b -> m Bool)
          -- ^ An action to check whether the result should be retried.
          -- If True, we delay and retry the operation.
          -> m b
          -- ^ Action to run
          -> m b
-retrying (RetryPolicy policy) chk f = go 0
+retrying (RetryPolicyM policy) chk f = go 0
     where
       go n = do
           res <- f
           chk' <- chk n res
           case chk' of
-            True ->
-              case (policy n) of
+            True -> do
+              chk <- policy n
+              case chk of
                 Just delay -> do
                   liftIO (threadDelay delay)
                   go $! n+1
@@ -245,7 +287,7 @@ recoverAll
 #else
          :: (MonadIO m, MonadCatch m)
 #endif
-         => RetryPolicy
+         => RetryPolicyM m
          -> m a
          -> m a
 recoverAll set f = recovering set [h] f
@@ -262,7 +304,7 @@ recovering
 #else
            :: (MonadIO m, MonadCatch m)
 #endif
-           => RetryPolicy
+           => RetryPolicyM m
            -- ^ Just use 'def' for default settings
            -> [(Int -> Handler m Bool)]
            -- ^ Should a given exception be retried? Action will be
@@ -272,7 +314,7 @@ recovering
            -> m a
            -- ^ Action to perform
            -> m a
-recovering (RetryPolicy policy) hs f = mask $ \restore -> go restore 0
+recovering (RetryPolicyM policy) hs f = mask $ \restore -> go restore 0
     where
       go restore = loop
         where
@@ -286,13 +328,15 @@ recovering (RetryPolicy policy) hs f = mask $ \restore -> go restore 0
               recover e ((($ n) -> Handler h) : hs')
                 | Just e' <- fromException e = do
                     chk <- h e'
-                    if chk
-                      then case policy n of
-                        Just delay -> do
-                          liftIO $ threadDelay delay
-                          loop $! n+1
-                        Nothing -> throwM e'
-                      else throwM e'
+                    case chk of
+                      True -> do
+                        res <- policy n
+                        case res of
+                          Just delay -> do
+                            liftIO $ threadDelay delay
+                            loop $! n+1
+                          Nothing -> throwM e'
+                      False -> throwM e'
                 | otherwise = recover e hs'
 
 
