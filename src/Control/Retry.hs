@@ -266,7 +266,9 @@ recovering
            -- ^ Just use 'def' for default settings
            -> [(Int -> Handler m Bool)]
            -- ^ Should a given exception be retried? Action will be
-           -- retried if this returns True.
+           -- retried if this returns True *and* the policy allows it.
+           -- This action will be consulted first even if the policy
+           -- later blocks it.
            -> m a
            -- ^ Action to perform
            -> m a
