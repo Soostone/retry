@@ -301,8 +301,9 @@ logRetries
     :: (Monad m, Show e, Exception e)
     => (e -> m Bool)
     -- ^ Test for whether action is to be retried
-    -> (String -> m ())
-    -- ^ How to report the generated warning message.
+    -> (Bool -> String -> m ())
+    -- ^ How to report the generated warning message. Boolean is
+    -- whether it's being retried or crashed.
     -> Int
     -- ^ Retry number
     -> Handler m Bool
@@ -310,7 +311,7 @@ logRetries f report n = Handler $ \ e -> do
     res <- f e
     let msg = "[retry:" <> show n <> "] Encountered " <> show e <> ". " <>
               if res then "Retrying." else "Crashing."
-    report msg
+    report res msg
     return res
 
 
