@@ -105,11 +105,15 @@ import           Prelude                hiding (catch)
 -- For anything more complex, just define your own 'RetryPolicy':
 --
 -- >> myPolicy = RetryPolicy $ \ n -> if n > 10 then Just 1000 else Just 10000
+--
+-- Since 0.7.
 newtype RetryPolicyM m = RetryPolicyM { getRetryPolicyM :: Int -> m (Maybe Int) }
 
 
--- | 'RetryPolicyM' without monadic logic in determining the reply.
-type RetryPolicy = RetryPolicyM Identity
+-- | Simplified 'RetryPolicyM' without any use of the monadic context in
+-- determining policy. Mostly maintains backwards compatitibility with
+-- type signatures pre 0.7.
+type RetryPolicy = forall m . Monad m => RetryPolicyM m
 
 
 instance Monad m => Default (RetryPolicyM m) where
@@ -132,10 +136,9 @@ retryPolicy f = RetryPolicyM $ \ i -> return (f i)
 -------------------------------------------------------------------------------
 -- | Retry immediately, but only up to @n@ times.
 limitRetries
-    :: Monad m
-    => Int
+    :: Int
     -- ^ Maximum number of retries.
-    -> RetryPolicyM m
+    -> RetryPolicy
 limitRetries i = retryPolicy $ \ n -> if n >= i then Nothing else (Just 0)
 
 
@@ -158,22 +161,19 @@ limitRetriesByDelay i p = RetryPolicyM $ \ n ->
 -------------------------------------------------------------------------------
 -- | Implement a constant delay with unlimited retries.
 constantDelay
-    :: Monad m
-    => Int
+    :: Int
     -- ^ Base delay in microseconds
-    -> RetryPolicyM m
+    -> RetryPolicy
 constantDelay delay = retryPolicy (const (Just delay))
 
 
 -------------------------------------------------------------------------------
 -- | Grow delay exponentially each iteration.
 exponentialBackoff
-    :: Monad m
-    => Int
+    :: Int
     -- ^ Base delay in microseconds
-    -> RetryPolicyM m
+    -> RetryPolicy
 exponentialBackoff base = retryPolicy $ \ n -> Just (2^n * base)
-
 
 
 
@@ -189,7 +189,7 @@ fullJitterBackoff :: MonadIO m => Int -> RetryPolicyM m
 fullJitterBackoff base = RetryPolicyM $ \n -> do
   let d = (2^n * base) `div` 2
   rand <- liftIO $ randomRIO (0, d)
-  return $ Just $ d + rand
+  return $ Just $! d + rand
 
 
 -------------------------------------------------------------------------------
