@@ -27,7 +27,7 @@
 
 module Control.Retry
     (
-      -- * High Level Operation
+      -- * Types and Operations
       RetryPolicyM (..)
     , RetryPolicy
     , retryPolicy
@@ -43,6 +43,8 @@ module Control.Retry
     , fullJitterBackoff
     , fibonacciBackoff
     , limitRetries
+    
+    -- * Policy Transformers
     , limitRetriesByDelay
     , capDelay
 
