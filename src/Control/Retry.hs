@@ -1,11 +1,6 @@
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE BangPatterns          #-}
 {-# LANGUAGE CPP                   #-}
-{-# LANGUAGE FlexibleContexts      #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RankNTypes            #-}
-{-# LANGUAGE RecordWildCards       #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE ViewPatterns          #-}
 
@@ -72,11 +67,11 @@ import           Prelude                hiding (catch)
 
 
 -------------------------------------------------------------------------------
--- | A 'RetryPolicy' is a function that takes an iteration number and
+-- | A 'RetryPolicyM' is a function that takes an iteration number and
 -- possibly returns a delay in microseconds. *Nothing* implies we have
 -- reached the retry limit.
 --
--- Please note that 'RetryPolicy' is a 'Monoid'. You can collapse
+-- Please note that 'RetryPolicyM' is a 'Monoid'. You can collapse
 -- multiple strategies into one using 'mappend' or '<>'. The semantics
 -- of this combination are as follows:
 --
@@ -102,9 +97,9 @@ import           Prelude                hiding (catch)
 --
 -- >> def = constantDelay 50000 <> limitRetries 5
 --
--- For anything more complex, just define your own 'RetryPolicy':
+-- For anything more complex, just define your own 'RetryPolicyM':
 --
--- >> myPolicy = RetryPolicy $ \ n -> if n > 10 then Just 1000 else Just 10000
+-- >> myPolicy = retryPolicy $ \ n -> if n > 10 then Just 1000 else Just 10000
 --
 -- Since 0.7.
 newtype RetryPolicyM m = RetryPolicyM { getRetryPolicyM :: Int -> m (Maybe Int) }
@@ -112,7 +107,7 @@ newtype RetryPolicyM m = RetryPolicyM { getRetryPolicyM :: Int -> m (Maybe Int) 
 
 -- | Simplified 'RetryPolicyM' without any use of the monadic context in
 -- determining policy. Mostly maintains backwards compatitibility with
--- type signatures pre 0.7.
+-- type signatures pre-0.7.
 type RetryPolicy = forall m . Monad m => RetryPolicyM m
 
 
@@ -131,7 +126,7 @@ instance Monad m => Monoid (RetryPolicyM m) where
 -------------------------------------------------------------------------------
 -- | Helper for making simplified policies that don't use the monadic
 -- context.
-retryPolicy :: Monad m => (Int -> Maybe Int) -> RetryPolicyM m
+retryPolicy :: (Int -> Maybe Int) -> RetryPolicy
 retryPolicy f = RetryPolicyM $ \ i -> return (f i)
 
 
