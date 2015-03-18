@@ -48,10 +48,6 @@ module Control.Retry
     , limitRetriesByDelay
     , capDelay
 
-    -- * Re-export from Data.Monoid
-
-    , (<>)
-
     ) where
 
 -------------------------------------------------------------------------------

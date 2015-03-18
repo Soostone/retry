@@ -5,6 +5,7 @@ module QuadraticDelayRetrySpec where
 import           Control.Applicative
 import           Control.Monad.Catch
 import           Control.Retry
+import           Data.Monoid
 import           Data.Time.Clock
 import           Data.Time.LocalTime     ()
 import           System.IO.Error
