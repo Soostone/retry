@@ -62,6 +62,7 @@ import           Control.Monad.IO.Class
 import           Control.Monad.Trans.Maybe
 import           Data.Default.Class
 import           Data.Functor.Identity
+import           Data.Maybe
 import           System.Random
 import           Data.Monoid
 import           Prelude                hiding (catch)
@@ -379,6 +380,8 @@ simulatePolicyPP n p = do
     ps <- simulatePolicy n p
     forM_ ps $ \ (n, res) -> putStrLn $
       show n <> ": " <> maybe "Inhibit" ppTime res
+    putStrLn $ "Total cumulative delay would be: " <> 
+      (ppTime $ sum $ (mapMaybe snd) ps)
 
 
 -------------------------------------------------------------------------------
