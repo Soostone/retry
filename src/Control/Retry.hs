@@ -48,9 +48,13 @@ module Control.Retry
     , limitRetriesByDelay
     , capDelay
 
+    -- * Development Helpers
+    , simulatePolicy
+    , simulatePolicyPP
     ) where
 
 -------------------------------------------------------------------------------
+import           Control.Arrow
 import           Control.Concurrent
 import           Control.Monad
 import           Control.Monad.Catch
@@ -168,6 +172,8 @@ exponentialBackoff
     -- ^ Base delay in microseconds
     -> RetryPolicy
 exponentialBackoff base = retryPolicy $ \ n -> Just (2^n * base)
+
+
 
 
 
@@ -356,6 +362,30 @@ logRetries f report n = Handler $ \ e -> do
               if res then "Retrying." else "Crashing."
     report res msg
     return res
+
+
+
+-------------------------------------------------------------------------------
+-- | Run given policy up to N iterations and gather results.
+simulatePolicy :: Monad m => Int -> RetryPolicyM m -> m [(Int, Maybe Int)]
+simulatePolicy n (RetryPolicyM f) = liftM (zip [0..n]) $ mapM f [0..n]
+
+
+-------------------------------------------------------------------------------
+-- | Run given policy up to N iterations and pretty print results on
+-- the console.
+simulatePolicyPP :: Int -> RetryPolicyM IO -> IO ()
+simulatePolicyPP n p = do
+    ps <- simulatePolicy n p
+    forM_ ps $ \ (n, res) -> putStrLn $
+      show n <> ": " <> maybe "Inhibit" ppTime res
+
+
+-------------------------------------------------------------------------------
+ppTime :: (Integral a, Show a) => a -> String
+ppTime n | n < 1000 = show n <> "us"
+         | n < 1000000 = show (fromIntegral n / 1000) <> "ms"
+         | otherwise = show (fromIntegral n / 1000) <> "ms"
 
 
                               ------------------
