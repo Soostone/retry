@@ -142,11 +142,10 @@ limitRetries i = retryPolicy $ \ n -> if n >= i then Nothing else (Just 0)
 -- amount has been reached or exceeded, the policy will stop retrying
 -- and fail.
 limitRetriesByDelay
-    :: Monad m
-    => Int
+    :: Int
     -- ^ Time-delay limit in microseconds. 
-    -> RetryPolicyM m
-    -> RetryPolicyM m
+    -> RetryPolicy
+    -> RetryPolicy
 limitRetriesByDelay i p = RetryPolicyM $ \ n -> 
     (>>= limit) `liftM` getRetryPolicyM p n 
   where
