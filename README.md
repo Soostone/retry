@@ -18,6 +18,12 @@ Please see haddocks for documentation.
 
 ## Changes
 
+### 0.7
+
+- RetryPolicy has become RetryPolicyM, allowing for policy logic to
+  consult the monad context.
+- We no longer re-export (<>) from Monoid.
+
 ### 0.6
 
 - Actions are now retried in the original masking state, while
