@@ -43,7 +43,7 @@ module Control.Retry
     , fullJitterBackoff
     , fibonacciBackoff
     , limitRetries
-    
+
     -- * Policy Transformers
     , limitRetriesByDelay
     , capDelay
@@ -71,8 +71,9 @@ import           Prelude                hiding (catch)
 
 -------------------------------------------------------------------------------
 -- | A 'RetryPolicyM' is a function that takes an iteration number and
--- possibly returns a delay in microseconds. *Nothing* implies we have
--- reached the retry limit.
+-- possibly returns a delay in microseconds.  Iteration numbers start
+-- at zero and increase by one on each retry.  A *Nothing* return value from
+-- the function implies we have reached the retry limit.
 --
 -- Please note that 'RetryPolicyM' is a 'Monoid'. You can collapse
 -- multiple strategies into one using 'mappend' or '<>'. The semantics
@@ -148,11 +149,11 @@ limitRetries i = retryPolicy $ \ n -> if n >= i then Nothing else (Just 0)
 -- and fail.
 limitRetriesByDelay
     :: Int
-    -- ^ Time-delay limit in microseconds. 
+    -- ^ Time-delay limit in microseconds.
     -> RetryPolicy
     -> RetryPolicy
-limitRetriesByDelay i p = RetryPolicyM $ \ n -> 
-    (>>= limit) `liftM` getRetryPolicyM p n 
+limitRetriesByDelay i p = RetryPolicyM $ \ n ->
+    (>>= limit) `liftM` getRetryPolicyM p n
   where
     limit delay = if delay >= i then Nothing else Just delay
 
@@ -167,10 +168,11 @@ constantDelay delay = retryPolicy (const (Just delay))
 
 
 -------------------------------------------------------------------------------
--- | Grow delay exponentially each iteration.
+-- | Grow delay exponentially each iteration.  Each delay will
+-- increase by a factor of two.
 exponentialBackoff
     :: Int
-    -- ^ Base delay in microseconds
+    -- ^ First delay in microseconds
     -> RetryPolicy
 exponentialBackoff base = retryPolicy $ \ n -> Just (2^n * base)
 
@@ -183,9 +185,9 @@ exponentialBackoff base = retryPolicy $ \ n -> Just (2^n * base)
 -- Blog article.
 --
 -- @http:\/\/www.awsarchitectureblog.com\/2015\/03\/backoff.html@
--- 
+--
 -- temp = min(cap, base * 2 ** attempt)
--- 
+--
 -- sleep = temp / 2 + random_between(0, temp / 2)
 fullJitterBackoff :: MonadIO m => Int -> RetryPolicyM m
 fullJitterBackoff base = RetryPolicyM $ \n -> do
@@ -219,7 +221,7 @@ capDelay
     -- ^ A maximum delay in microseconds
     -> RetryPolicyM m
     -> RetryPolicyM m
-capDelay limit p = RetryPolicyM $ \ n -> 
+capDelay limit p = RetryPolicyM $ \ n ->
   (fmap (min limit)) `liftM` (getRetryPolicyM p) n
 
 
@@ -380,7 +382,7 @@ simulatePolicyPP n p = do
     ps <- simulatePolicy n p
     forM_ ps $ \ (n, res) -> putStrLn $
       show n <> ": " <> maybe "Inhibit" ppTime res
-    putStrLn $ "Total cumulative delay would be: " <> 
+    putStrLn $ "Total cumulative delay would be: " <>
       (ppTime $ sum $ (mapMaybe snd) ps)
 
 
