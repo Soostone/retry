@@ -5,7 +5,11 @@ module RetrySpec where
 
 -------------------------------------------------------------------------------
 import           Control.Applicative
-import           Control.Exception        (MaskingState (..), getMaskingState)
+import           Control.Concurrent
+import           Control.Concurrent.MVar
+import           Control.Concurrent.STM
+import           Control.Exception        (ErrorCall (..), MaskingState (..),
+                                           getMaskingState, throwTo)
 import           Control.Monad.Catch
 import           Control.Monad.IO.Class
 import           Data.Default.Class       (def)
@@ -75,6 +79,21 @@ spec = parallel $ describe "retry" $ do
 
 
   describe "recovering - exception hierarcy semantics" $ do
+    it "does not catch enclosed exceptions" $ do
+      counter <- newTVarIO 0
+      done <- newEmptyMVar
+      let work = atomically (modifyTVar' counter succ) >> threadDelay 1000000
+
+      tid <- forkIO $
+        recoverAll (limitRetries 2) work `finally` putMVar done ()
+
+      atomically (check . (== 1) =<< readTVar counter)
+      throwTo tid (ErrorCall "boom")
+
+      takeMVar done
+
+      count <- atomically (readTVar counter)
+      count `shouldBe` 1
 
     it "recovers from custom exceptions" $ do
       f <- mkFailN Custom1 2
