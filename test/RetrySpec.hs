@@ -146,7 +146,7 @@ spec = parallel $ describe "retry" $ do
     let toPolicy = retryPolicy . apply
     let prop left right  =
           property $ \a x ->
-            let applyPolicy f = getRetryPolicyM (f $ toPolicy a) x
+            let applyPolicy f = getRetryPolicy (f $ toPolicy a) x
                 validRes = maybe True (>= 0)
             in  monadicIO $ do
                 l <- liftIO $ applyPolicy left
@@ -157,7 +157,7 @@ spec = parallel $ describe "retry" $ do
 
     let prop3 left right  =
           property $ \a b c x ->
-            let applyPolicy f = liftIO $ getRetryPolicyM (f (toPolicy a) (toPolicy b) (toPolicy c)) x
+            let applyPolicy f = liftIO $ getRetryPolicy (f (toPolicy a) (toPolicy b) (toPolicy c)) x
             in monadicIO $ do
                   res <- (==) <$> applyPolicy left <*> applyPolicy right
                   assert res

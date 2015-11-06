@@ -43,7 +43,7 @@ module Control.Retry
     , fullJitterBackoff
     , fibonacciBackoff
     , limitRetries
-    
+
     -- * Policy Transformers
     , limitRetriesByDelay
     , capDelay
@@ -105,7 +105,7 @@ import           Prelude                hiding (catch)
 -- >> myPolicy = retryPolicy $ \ n -> if n > 10 then Just 1000 else Just 10000
 --
 -- Since 0.7.
-newtype RetryPolicyM m = RetryPolicyM { getRetryPolicyM :: Int -> m (Maybe Int) }
+newtype RetryPolicyM m = RetryPolicy { getRetryPolicy :: Int -> m (Maybe Int) }
 
 
 -- | Simplified 'RetryPolicyM' without any use of the monadic context in
@@ -120,7 +120,7 @@ instance Monad m => Default (RetryPolicyM m) where
 
 instance Monad m => Monoid (RetryPolicyM m) where
     mempty = retryPolicy $ const (Just 0)
-    (RetryPolicyM a) `mappend` (RetryPolicyM b) = RetryPolicyM $ \ n -> runMaybeT $ do
+    (RetryPolicy a) `mappend` (RetryPolicy b) = RetryPolicy $ \ n -> runMaybeT $ do
       a' <- MaybeT $ a n
       b' <- MaybeT $ b n
       return $! max a' b'
@@ -130,7 +130,7 @@ instance Monad m => Monoid (RetryPolicyM m) where
 -- | Helper for making simplified policies that don't use the monadic
 -- context.
 retryPolicy :: (Int -> Maybe Int) -> RetryPolicy
-retryPolicy f = RetryPolicyM $ \ i -> return (f i)
+retryPolicy f = RetryPolicy $ \ i -> return (f i)
 
 
 -------------------------------------------------------------------------------
@@ -148,11 +148,11 @@ limitRetries i = retryPolicy $ \ n -> if n >= i then Nothing else (Just 0)
 -- and fail.
 limitRetriesByDelay
     :: Int
-    -- ^ Time-delay limit in microseconds. 
+    -- ^ Time-delay limit in microseconds.
     -> RetryPolicy
     -> RetryPolicy
-limitRetriesByDelay i p = RetryPolicyM $ \ n -> 
-    (>>= limit) `liftM` getRetryPolicyM p n 
+limitRetriesByDelay i p = RetryPolicy $ \ n ->
+    (>>= limit) `liftM` getRetryPolicy p n
   where
     limit delay = if delay >= i then Nothing else Just delay
 
@@ -183,12 +183,12 @@ exponentialBackoff base = retryPolicy $ \ n -> Just (2^n * base)
 -- Blog article.
 --
 -- @http:\/\/www.awsarchitectureblog.com\/2015\/03\/backoff.html@
--- 
+--
 -- temp = min(cap, base * 2 ** attempt)
--- 
+--
 -- sleep = temp / 2 + random_between(0, temp / 2)
 fullJitterBackoff :: MonadIO m => Int -> RetryPolicyM m
-fullJitterBackoff base = RetryPolicyM $ \n -> do
+fullJitterBackoff base = RetryPolicy $ \n -> do
   let d = (2^n * base) `div` 2
   rand <- liftIO $ randomRIO (0, d)
   return $ Just $! d + rand
@@ -219,8 +219,8 @@ capDelay
     -- ^ A maximum delay in microseconds
     -> RetryPolicyM m
     -> RetryPolicyM m
-capDelay limit p = RetryPolicyM $ \ n -> 
-  (fmap (min limit)) `liftM` (getRetryPolicyM p) n
+capDelay limit p = RetryPolicy $ \ n ->
+  (fmap (min limit)) `liftM` (getRetryPolicy p) n
 
 
 -------------------------------------------------------------------------------
@@ -252,7 +252,7 @@ retrying :: MonadIO m
          -> m b
          -- ^ Action to run
          -> m b
-retrying (RetryPolicyM policy) chk f = go 0
+retrying (RetryPolicy policy) chk f = go 0
     where
       go n = do
           res <- f
@@ -318,7 +318,7 @@ recovering
            -> m a
            -- ^ Action to perform
            -> m a
-recovering (RetryPolicyM policy) hs f = mask $ \restore -> go restore 0
+recovering (RetryPolicy policy) hs f = mask $ \restore -> go restore 0
     where
       go restore = loop
         where
@@ -369,7 +369,7 @@ logRetries f report n = Handler $ \ e -> do
 -------------------------------------------------------------------------------
 -- | Run given policy up to N iterations and gather results.
 simulatePolicy :: Monad m => Int -> RetryPolicyM m -> m [(Int, Maybe Int)]
-simulatePolicy n (RetryPolicyM f) = liftM (zip [0..n]) $ mapM f [0..n]
+simulatePolicy n (RetryPolicy f) = liftM (zip [0..n]) $ mapM f [0..n]
 
 
 -------------------------------------------------------------------------------
@@ -380,7 +380,7 @@ simulatePolicyPP n p = do
     ps <- simulatePolicy n p
     forM_ ps $ \ (n, res) -> putStrLn $
       show n <> ": " <> maybe "Inhibit" ppTime res
-    putStrLn $ "Total cumulative delay would be: " <> 
+    putStrLn $ "Total cumulative delay would be: " <>
       (ppTime $ sum $ (mapMaybe snd) ps)
 
 
