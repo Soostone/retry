@@ -1,5 +1,6 @@
 {-# LANGUAGE BangPatterns          #-}
 {-# LANGUAGE CPP                   #-}
+{-# LANGUAGE DeriveGeneric         #-}
 {-# LANGUAGE RankNTypes            #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE ViewPatterns          #-}
@@ -31,13 +32,11 @@ module Control.Retry
       RetryPolicyM (..)
     , RetryPolicy
     , retryPolicy
+    , RetryStatus(..)
 
     , retrying
-    , retrying'
     , recovering
-    , recovering'
     , recoverAll
-    , recoverAll'
     , logRetries
 
     -- * Retry Policies
@@ -62,10 +61,13 @@ import           Control.Concurrent
 import           Control.Monad
 import           Control.Monad.Catch
 import           Control.Monad.IO.Class
+import           Control.Monad.Trans.Class
 import           Control.Monad.Trans.Maybe
+import           Control.Monad.Trans.State
 import           Data.Default.Class
 import           Data.Functor.Identity
 import           Data.Maybe
+import           GHC.Generics
 import           System.Random
 import           Data.Monoid
 import           Prelude                hiding (catch)
@@ -109,7 +111,7 @@ import           Prelude                hiding (catch)
 -- >> myPolicy = retryPolicy $ \ n -> if n > 10 then Just 1000 else Just 10000
 --
 -- Since 0.7.
-newtype RetryPolicyM m = RetryPolicyM { getRetryPolicyM :: Int -> m (Maybe Int) }
+newtype RetryPolicyM m = RetryPolicyM { getRetryPolicyM :: RetryStatus -> m (Maybe Int) }
 
 
 -- | Simplified 'RetryPolicyM' without any use of the monadic context in
@@ -131,10 +133,18 @@ instance Monad m => Monoid (RetryPolicyM m) where
 
 
 -------------------------------------------------------------------------------
+data RetryStatus = RetryStatus { rsRetryNumber :: Int
+                               -- ^ Retry number, where 0 is the first try
+                               , rsCumulativeDelay :: Int
+                               -- ^ Delay incurred so far from retries in microseconds
+                               } deriving (Show, Eq, Generic)
+
+
+-------------------------------------------------------------------------------
 -- | Helper for making simplified policies that don't use the monadic
 -- context.
-retryPolicy :: (Int -> Maybe Int) -> RetryPolicy
-retryPolicy f = RetryPolicyM $ \ i -> return (f i)
+retryPolicy :: (RetryStatus -> Maybe Int) -> RetryPolicy
+retryPolicy f = RetryPolicyM $ \ s -> return (f s)
 
 
 -------------------------------------------------------------------------------
@@ -143,7 +153,7 @@ limitRetries
     :: Int
     -- ^ Maximum number of retries.
     -> RetryPolicy
-limitRetries i = retryPolicy $ \ n -> if n >= i then Nothing else (Just 0)
+limitRetries i = retryPolicy $ \ RetryStatus { rsRetryNumber = n} -> if n >= i then Nothing else (Just 0)
 
 
 -------------------------------------------------------------------------------
@@ -177,10 +187,7 @@ exponentialBackoff
     :: Int
     -- ^ First delay in microseconds
     -> RetryPolicy
-exponentialBackoff base = retryPolicy $ \ n -> Just (2^n * base)
-
-
-
+exponentialBackoff base = retryPolicy $ \ RetryStatus { rsRetryNumber = n} -> Just (2^n * base)
 
 
 -------------------------------------------------------------------------------
@@ -193,7 +200,7 @@ exponentialBackoff base = retryPolicy $ \ n -> Just (2^n * base)
 --
 -- sleep = temp / 2 + random_between(0, temp / 2)
 fullJitterBackoff :: MonadIO m => Int -> RetryPolicyM m
-fullJitterBackoff base = RetryPolicyM $ \n -> do
+fullJitterBackoff base = RetryPolicyM $ \RetryStatus { rsRetryNumber = n } -> do
   let d = (2^n * base) `div` 2
   rand <- liftIO $ randomRIO (0, d)
   return $ Just $! d + rand
@@ -205,7 +212,7 @@ fibonacciBackoff
     :: Int
     -- ^ Base delay in microseconds
     -> RetryPolicy
-fibonacciBackoff base = retryPolicy $ \ n -> Just $ fib (n + 1) (0, base)
+fibonacciBackoff base = retryPolicy $ \ RetryStatus { rsRetryNumber = n } -> Just $ fib (n + 1) (0, base)
     where
       fib 0 (a, _) = a
       fib !m (!a, !b) = fib (m-1) (b, a + b)
@@ -237,7 +244,7 @@ capDelay limit p = RetryPolicyM $ \ n ->
 -- retry it 5 additional times following the initial run:
 --
 -- >>> import Data.Maybe
--- >>> let f = putStrLn "Running action" >> return Nothing
+-- >>> let f _ = putStrLn "Running action" >> return Nothing
 -- >>> retrying def (const $ return . isNothing) f
 -- Running action
 -- Running action
@@ -249,39 +256,27 @@ capDelay limit p = RetryPolicyM $ \ n ->
 --
 -- Note how the latest failing result is returned after all retries
 -- have been exhausted.
-retrying :: MonadIO m
-         => RetryPolicyM m
-         -> (Int -> b -> m Bool)
-         -- ^ An action to check whether the result should be retried.
-         -- If True, we delay and retry the operation.
-         -> m b
-         -- ^ Action to run
-         -> m b
-retrying p chk = retrying' p chk . const
-
-
--------------------------------------------------------------------------------
--- | Version of 'retrying' where the action gets the current try number.
-retrying'  :: MonadIO m
-           => RetryPolicyM m
-           -> (Int -> b -> m Bool)
-           -- ^ An action to check whether the result should be retried.
-           -- If True, we delay and retry the operation.
-           -> (Int -> m b)
-           -- ^ Action to run
-           -> m b
-retrying' (RetryPolicyM policy) chk f = go 0
+retrying  :: MonadIO m
+          => RetryPolicyM m
+          -> (RetryStatus -> b -> m Bool)
+          -- ^ An action to check whether the result should be retried.
+          -- If True, we delay and retry the operation.
+          -> (RetryStatus -> m b)
+          -- ^ Action to run
+          -> m b
+retrying (RetryPolicyM policy) chk f = go (RetryStatus 0 0)
   where
-    go n = do
-        res <- f n
-        chk' <- chk n res
+    go s = do
+        res <- f s
+        chk' <- chk s res
         case chk' of
           True -> do
-            chk <- policy n
+            chk <- policy s
             case chk of
               Just delay -> do
                 liftIO (threadDelay delay)
-                go $! n+1
+                go $! RetryStatus { rsRetryNumber = rsRetryNumber s + 1
+                                  , rsCumulativeDelay = rsCumulativeDelay s + delay}
               Nothing -> return res
           False -> return res
 
@@ -293,7 +288,7 @@ retrying' (RetryPolicyM policy) chk f = go 0
 -- See how the action below is run once and retried 5 more times
 -- before finally failing for good:
 --
--- >>> let f = putStrLn "Running action" >> error "this is an error"
+-- >>> let f _ = putStrLn "Running action" >> error "this is an error"
 -- >>> recoverAll def f
 -- Running action
 -- Running action
@@ -309,23 +304,9 @@ recoverAll
          :: (MonadIO m, MonadCatch m)
 #endif
          => RetryPolicyM m
+         -> (RetryStatus -> m a)
          -> m a
-         -> m a
-recoverAll p = recoverAll' p . const
-
-
--------------------------------------------------------------------------------
--- | Version of 'recoverAll' where the action gets the current try number.
-recoverAll'
-#if MIN_VERSION_exceptions(0, 6, 0)
-         :: (MonadIO m, MonadMask m)
-#else
-         :: (MonadIO m, MonadCatch m)
-#endif
-         => RetryPolicyM m
-         -> (Int -> m a)
-         -> m a
-recoverAll' set f = recovering' set [h] f
+recoverAll set f = recovering set [h] f
     where
       h _ = Handler $ \ (_ :: SomeException) -> return True
 
@@ -341,56 +322,36 @@ recovering
 #endif
            => RetryPolicyM m
            -- ^ Just use 'def' for default settings
-           -> [(Int -> Handler m Bool)]
+           -> [(RetryStatus -> Handler m Bool)]
            -- ^ Should a given exception be retried? Action will be
            -- retried if this returns True *and* the policy allows it.
            -- This action will be consulted first even if the policy
            -- later blocks it.
-           -> m a
+           -> (RetryStatus -> m a)
            -- ^ Action to perform
            -> m a
-recovering p hs = recovering' p hs . const
-
-
--------------------------------------------------------------------------------
--- | Version of 'recovering' where the action gets the current try number.
-recovering'
-#if MIN_VERSION_exceptions(0, 6, 0)
-           :: (MonadIO m, MonadMask m)
-#else
-           :: (MonadIO m, MonadCatch m)
-#endif
-           => RetryPolicyM m
-           -- ^ Just use 'def' for default settings
-           -> [(Int -> Handler m Bool)]
-           -- ^ Should a given exception be retried? Action will be
-           -- retried if this returns True *and* the policy allows it.
-           -- This action will be consulted first even if the policy
-           -- later blocks it.
-           -> (Int -> m a)
-           -- ^ Action to perform
-           -> m a
-recovering' (RetryPolicyM policy) hs f = mask $ \restore -> go restore 0
+recovering p@(RetryPolicyM policy) hs f = mask $ \restore -> go restore (RetryStatus 0 0)
     where
       go restore = loop
         where
-          loop n = do
-            r <- try $ restore (f n)
+          loop s = do
+            r <- try $ restore (f s)
             case r of
               Right x -> return x
               Left e -> recover (e :: SomeException) hs
             where
               recover e [] = throwM e
-              recover e ((($ n) -> Handler h) : hs')
+              recover e ((($ s) -> Handler h) : hs')
                 | Just e' <- fromException e = do
                     chk <- h e'
                     case chk of
                       True -> do
-                        res <- policy n
+                        res <- policy s
                         case res of
                           Just delay -> do
                             liftIO $ threadDelay delay
-                            loop $! n+1
+                            loop $! RetryStatus { rsRetryNumber = rsRetryNumber s + 1
+                                                , rsCumulativeDelay = rsCumulativeDelay s + delay}
                           Nothing -> throwM e'
                       False -> throwM e'
                 | otherwise = recover e hs'
@@ -417,11 +378,14 @@ logRetries f report n = Handler $ \ e -> do
     return res
 
 
-
 -------------------------------------------------------------------------------
 -- | Run given policy up to N iterations and gather results.
 simulatePolicy :: Monad m => Int -> RetryPolicyM m -> m [(Int, Maybe Int)]
-simulatePolicy n (RetryPolicyM f) = liftM (zip [0..n]) $ mapM f [0..n]
+simulatePolicy n (RetryPolicyM f) = flip evalStateT (RetryStatus 0 0) $ forM [0..n] $ \i -> do
+  stat <- get
+  delay <- lift (f stat)
+  put stat { rsRetryNumber = i + 1, rsCumulativeDelay = rsCumulativeDelay stat + fromMaybe 0 delay}
+  return (i, delay)
 
 
 -------------------------------------------------------------------------------

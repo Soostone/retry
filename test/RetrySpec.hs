@@ -31,23 +31,36 @@ isLeftAnd f ei = case ei of
   Left v -> f v
   _      -> False
 
-testHandlers :: [Int -> Handler IO Bool]
+testHandlers :: [a -> Handler IO Bool]
 testHandlers = [const $ Handler (\(_::SomeException) -> return True)]
 
 
 data Custom1 = Custom1 deriving (Eq,Show,Read,Ord,Typeable)
 data Custom2 = Custom2 deriving (Eq,Show,Read,Ord,Typeable)
 
+
 instance Exception Custom1
 instance Exception Custom2
 
 
+instance Arbitrary RetryStatus where
+  arbitrary = do
+    Positive n <- arbitrary
+    Positive d <- arbitrary
+    return (RetryStatus n d)
+
+instance CoArbitrary RetryStatus
+
+instance Function RetryStatus where
+  function = functionMap (\(RetryStatus n d) -> (n, d))
+                         (\(n, d) -> RetryStatus n d)
+
 -- | Create an action that will fail exactly N times with the given
 -- exception and will then return () in any subsequent calls.
-mkFailN :: (Num a, Ord a, Exception e) => e -> a -> IO (IO ())
+mkFailN :: (Num a, Ord a, Exception e) => e -> a -> IO (s -> IO ())
 mkFailN e n = do
     r <- newIORef 0
-    return $ do
+    return $ const $ do
       old <- atomicModifyIORef' r $ \ old -> (old+1, old)
       case old >= n of
         True -> return ()
@@ -67,7 +80,7 @@ spec = parallel $ describe "retry" $ do
     res <- run . try $ recovering
       (constantDelay timeout <> limitRetries retries)
       testHandlers
-      (throwM (userError "booo"))
+      (const $ throwM (userError "booo"))
     endTime <- run getCurrentTime
     QCM.assert (isLeftAnd isUserError res)
     let ms' = (fromInteger . toInteger $ (timeout * retries)) / 1000000.0
@@ -171,13 +184,22 @@ spec = parallel $ describe "retry" $ do
     it "associativity" $
       prop3 (\x y z -> x <> (y <> z)) (\x y z -> (x <> y) <> z)
 
+  describe "retry status" $ do
+
+    it "passes in the correct retry status each time" $ do
+      let policy = limitRetries 2 <> constantDelay 100
+      r <- newIORef []
+      retrying policy (\_ _ -> return True)
+                      (\rs -> modifyIORef' r (\acc -> acc ++ [rs]))
+      rses <- readIORef r
+      rses @?= [RetryStatus 0 0, RetryStatus 1 100, RetryStatus 2 200]
 
   describe "masking state" $ do
 
     it "shouldn't change masking state in a recovered action" $ do
       maskingState <- getMaskingState
       shouldThrow
-        (recovering def testHandlers $ do
+        (recovering def testHandlers $ const $ do
           maskingState' <- getMaskingState
           maskingState' @?= maskingState
           fail "Retrying...")
@@ -191,5 +213,5 @@ spec = parallel $ describe "retry" $ do
                 return True
             ]
       shouldThrow
-        (recovering def checkMaskingStateHandlers $ fail "Retrying...")
+        (recovering def checkMaskingStateHandlers $ const $ fail "Retrying...")
         anyIOException
