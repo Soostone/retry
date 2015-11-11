@@ -33,8 +33,11 @@ module Control.Retry
     , retryPolicy
 
     , retrying
+    , retrying'
     , recovering
+    , recovering'
     , recoverAll
+    , recoverAll'
     , logRetries
 
     -- * Retry Policies
@@ -254,21 +257,32 @@ retrying :: MonadIO m
          -> m b
          -- ^ Action to run
          -> m b
-retrying (RetryPolicyM policy) chk f = go 0
-    where
-      go n = do
-          res <- f
-          chk' <- chk n res
-          case chk' of
-            True -> do
-              chk <- policy n
-              case chk of
-                Just delay -> do
-                  liftIO (threadDelay delay)
-                  go $! n+1
-                Nothing -> return res
-            False -> return res
+retrying p chk = retrying' p chk . const
 
+
+-------------------------------------------------------------------------------
+retrying'  :: MonadIO m
+           => RetryPolicyM m
+           -> (Int -> b -> m Bool)
+           -- ^ An action to check whether the result should be retried.
+           -- If True, we delay and retry the operation.
+           -> (Int -> m b)
+           -- ^ Action to run
+           -> m b
+retrying' (RetryPolicyM policy) chk f = go 0
+  where
+    go n = do
+        res <- f n
+        chk' <- chk n res
+        case chk' of
+          True -> do
+            chk <- policy n
+            case chk of
+              Just delay -> do
+                liftIO (threadDelay delay)
+                go $! n+1
+              Nothing -> return res
+          False -> return res
 
 
 -------------------------------------------------------------------------------
@@ -296,7 +310,20 @@ recoverAll
          => RetryPolicyM m
          -> m a
          -> m a
-recoverAll set f = recovering set [h] f
+recoverAll p = recoverAll' p . const
+
+
+-------------------------------------------------------------------------------
+recoverAll'
+#if MIN_VERSION_exceptions(0, 6, 0)
+         :: (MonadIO m, MonadMask m)
+#else
+         :: (MonadIO m, MonadCatch m)
+#endif
+         => RetryPolicyM m
+         -> (Int -> m a)
+         -> m a
+recoverAll' set f = recovering' set [h] f
     where
       h _ = Handler $ \ (_ :: SomeException) -> return True
 
@@ -320,12 +347,32 @@ recovering
            -> m a
            -- ^ Action to perform
            -> m a
-recovering (RetryPolicyM policy) hs f = mask $ \restore -> go restore 0
+recovering p hs = recovering' p hs . const
+
+
+-------------------------------------------------------------------------------
+recovering'
+#if MIN_VERSION_exceptions(0, 6, 0)
+           :: (MonadIO m, MonadMask m)
+#else
+           :: (MonadIO m, MonadCatch m)
+#endif
+           => RetryPolicyM m
+           -- ^ Just use 'def' for default settings
+           -> [(Int -> Handler m Bool)]
+           -- ^ Should a given exception be retried? Action will be
+           -- retried if this returns True *and* the policy allows it.
+           -- This action will be consulted first even if the policy
+           -- later blocks it.
+           -> (Int -> m a)
+           -- ^ Action to perform
+           -> m a
+recovering' (RetryPolicyM policy) hs f = mask $ \restore -> go restore 0
     where
       go restore = loop
         where
           loop n = do
-            r <- try $ restore f
+            r <- try $ restore (f n)
             case r of
               Right x -> return x
               Left e -> recover (e :: SomeException) hs
