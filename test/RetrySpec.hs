@@ -47,13 +47,18 @@ instance Arbitrary RetryStatus where
   arbitrary = do
     Positive n <- arbitrary
     Positive d <- arbitrary
-    return (RetryStatus n d)
+    l <- arbitrary `suchThatMaybe` \(Positive n) -> n <= d
+    return (defaultRetryStatus { rsRetryNumber = n
+                               , rsCumulativeDelay = d
+                               , rsPreviousDelay = getPositive <$> l})
 
 instance CoArbitrary RetryStatus
 
 instance Function RetryStatus where
-  function = functionMap (\(RetryStatus n d) -> (n, d))
-                         (\(n, d) -> RetryStatus n d)
+  function = functionMap (\rs -> (rsRetryNumber rs, rsCumulativeDelay rs, rsPreviousDelay rs))
+                         (\(n, d, l) -> defaultRetryStatus { rsRetryNumber = n
+                                                           , rsCumulativeDelay = d
+                                                           , rsPreviousDelay = l})
 
 -- | Create an action that will fail exactly N times with the given
 -- exception and will then return () in any subsequent calls.
@@ -192,7 +197,9 @@ spec = parallel $ describe "retry" $ do
       retrying policy (\_ _ -> return True)
                       (\rs -> modifyIORef' r (\acc -> acc ++ [rs]))
       rses <- readIORef r
-      rses @?= [RetryStatus 0 0, RetryStatus 1 100, RetryStatus 2 200]
+      rsRetryNumber <$> rses @?= [0, 1, 2]
+      rsCumulativeDelay <$> rses @?= [0, 100, 200]
+      rsPreviousDelay <$> rses @?= [Nothing, Just 0, Just 100]
 
   describe "masking state" $ do
 
