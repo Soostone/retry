@@ -8,7 +8,7 @@ import           Control.Applicative
 import           Control.Concurrent
 import           Control.Concurrent.MVar
 import           Control.Concurrent.STM
-import           Control.Exception        (ErrorCall (..), MaskingState (..),
+import           Control.Exception        (AsyncException (..), MaskingState (..),
                                            getMaskingState, throwTo)
 import           Control.Monad.Catch
 import           Control.Monad.IO.Class
@@ -88,7 +88,7 @@ spec = parallel $ describe "retry" $ do
         recoverAll (limitRetries 2) work `finally` putMVar done ()
 
       atomically (check . (== 1) =<< readTVar counter)
-      throwTo tid (ErrorCall "boom")
+      throwTo tid UserInterrupt
 
       takeMVar done
 

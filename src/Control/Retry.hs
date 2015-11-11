@@ -56,6 +56,11 @@ module Control.Retry
 -------------------------------------------------------------------------------
 import           Control.Arrow
 import           Control.Concurrent
+#if MIN_VERSION_base(4, 7, 0)
+import           Control.Exception (AsyncException, SomeAsyncException)
+#else
+import           Control.Exception (AsyncException)
+#endif
 import           Control.Monad
 import           Control.Monad.Catch
 import           Control.Monad.IO.Class
@@ -273,7 +278,13 @@ retrying (RetryPolicyM policy) chk f = go 0
 
 -------------------------------------------------------------------------------
 -- | Retry ALL exceptions that may be raised. To be used with caution;
--- this matches the exception on 'SomeException'.
+-- this matches the exception on 'SomeException'. Note that this
+-- handler explicitly does not handle 'AsyncException' nor
+-- 'SomeAsyncException' (for versions of base >= 4.7). It is not a
+-- good idea to catch async exceptions as it can result in hanging
+-- threads and programs. Note that if you just throw an exception to
+-- this thread that does not descend from SomeException, recoverAll
+-- will catch it.
 --
 -- See how the action below is run once and retried 5 more times
 -- before finally failing for good:
@@ -296,14 +307,27 @@ recoverAll
          => RetryPolicyM m
          -> m a
          -> m a
-recoverAll set f = recovering set [h] f
+recoverAll set f = recovering set handlers f
     where
+#if MIN_VERSION_base(4, 7, 0)
+      someAsyncH _ = Handler $ \(_ :: SomeAsyncException) -> return False
+      handlers = [asyncH, someAsyncH, h]
+#else
+      handlers = [asyncH, h]
+#endif
+      asyncH _ = Handler $ \ (_ :: AsyncException) -> return False
       h _ = Handler $ \ (_ :: SomeException) -> return True
 
 
 -------------------------------------------------------------------------------
 -- | Run an action and recover from a raised exception by potentially
--- retrying the action a number of times.
+-- retrying the action a number of times. Note that if you're going to
+-- use a handler for 'SomeException', you should add explicit cases
+-- *earlier* in the list of handlers to reject 'AsyncException' and
+-- 'SomeAsyncException', as catching these can cause thread and
+-- program hangs. 'recoverAll' already does this for you so if you
+-- just plan on catching 'SomeException', you may as well ues
+-- 'recoverAll'
 recovering
 #if MIN_VERSION_exceptions(0, 6, 0)
            :: (MonadIO m, MonadMask m)
