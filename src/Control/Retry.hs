@@ -261,6 +261,7 @@ retrying p chk = retrying' p chk . const
 
 
 -------------------------------------------------------------------------------
+-- | Version of 'retrying' where the action gets the current try number.
 retrying'  :: MonadIO m
            => RetryPolicyM m
            -> (Int -> b -> m Bool)
@@ -314,6 +315,7 @@ recoverAll p = recoverAll' p . const
 
 
 -------------------------------------------------------------------------------
+-- | Version of 'recoverAll' where the action gets the current try number.
 recoverAll'
 #if MIN_VERSION_exceptions(0, 6, 0)
          :: (MonadIO m, MonadMask m)
@@ -351,6 +353,7 @@ recovering p hs = recovering' p hs . const
 
 
 -------------------------------------------------------------------------------
+-- | Version of 'recovering' where the action gets the current try number.
 recovering'
 #if MIN_VERSION_exceptions(0, 6, 0)
            :: (MonadIO m, MonadMask m)
