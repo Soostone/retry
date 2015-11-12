@@ -414,15 +414,16 @@ logRetries
     -> (Bool -> String -> m ())
     -- ^ How to report the generated warning message. Boolean is
     -- whether it's being retried or crashed.
-    -> Int
+    -> RetryStatus
     -- ^ Retry number
     -> Handler m Bool
-logRetries f report n = Handler $ \ e -> do
+logRetries f report s = Handler $ \ e -> do
     res <- f e
     let msg = "[retry:" <> show n <> "] Encountered " <> show e <> ". " <>
               if res then "Retrying." else "Crashing."
     report res msg
     return res
+  where n = rsIterNumber s
 
 
 -------------------------------------------------------------------------------
