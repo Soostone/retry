@@ -155,9 +155,9 @@ instance Monad m => Monoid (RetryPolicyM m) where
 -- >> retryStatus { rsIterNumber = newIterNumber }
 -- >> retryStatus & rsIterNumberL .~ newIterNumber
 data RetryStatus = RetryStatus
-    { rsIterNumber      :: Int -- ^ Iteration number, where 0 is the first try
-    , rsCumulativeDelay :: Int -- ^ Delay incurred so far from retries in microseconds
-    , rsPreviousDelay   :: Maybe Int -- ^ Previous attempt's delay. Will always be Nothing on first run.
+    { rsIterNumber      :: !Int -- ^ Iteration number, where 0 is the first try
+    , rsCumulativeDelay :: !Int -- ^ Delay incurred so far from retries in microseconds
+    , rsPreviousDelay   :: !(Maybe Int) -- ^ Previous attempt's delay. Will always be Nothing on first run.
     } deriving (Show, Eq, Generic)
 
 
