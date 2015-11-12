@@ -48,15 +48,15 @@ instance Arbitrary RetryStatus where
     Positive n <- arbitrary
     Positive d <- arbitrary
     l <- arbitrary `suchThatMaybe` \(Positive n) -> n <= d
-    return (defaultRetryStatus { rsRetryNumber = n
+    return (defaultRetryStatus { rsIterNumber = n
                                , rsCumulativeDelay = d
                                , rsPreviousDelay = getPositive <$> l})
 
 instance CoArbitrary RetryStatus
 
 instance Function RetryStatus where
-  function = functionMap (\rs -> (rsRetryNumber rs, rsCumulativeDelay rs, rsPreviousDelay rs))
-                         (\(n, d, l) -> defaultRetryStatus { rsRetryNumber = n
+  function = functionMap (\rs -> (rsIterNumber rs, rsCumulativeDelay rs, rsPreviousDelay rs))
+                         (\(n, d, l) -> defaultRetryStatus { rsIterNumber = n
                                                            , rsCumulativeDelay = d
                                                            , rsPreviousDelay = l})
 
@@ -197,7 +197,7 @@ spec = parallel $ describe "retry" $ do
       retrying policy (\_ _ -> return True)
                       (\rs -> modifyIORef' r (\acc -> acc ++ [rs]))
       rses <- readIORef r
-      rsRetryNumber <$> rses @?= [0, 1, 2]
+      rsIterNumber <$> rses @?= [0, 1, 2]
       rsCumulativeDelay <$> rses @?= [0, 100, 200]
       rsPreviousDelay <$> rses @?= [Nothing, Just 0, Just 100]
 
