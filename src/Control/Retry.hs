@@ -169,19 +169,19 @@ defaultRetryStatus = RetryStatus 0 0 Nothing
 
 -------------------------------------------------------------------------------
 rsIterNumberL :: Lens' RetryStatus Int
-rsIterNumberL = undefined
+rsIterNumberL = lens rsIterNumber (\rs x -> rs { rsIterNumber = x })
 {-# INLINE rsIterNumberL #-}
 
 
 -------------------------------------------------------------------------------
 rsCumulativeDelayL :: Lens' RetryStatus Int
-rsCumulativeDelayL = undefined
+rsCumulativeDelayL = lens rsCumulativeDelay (\rs x -> rs { rsCumulativeDelay = x })
 {-# INLINE rsCumulativeDelayL #-}
 
 
 -------------------------------------------------------------------------------
 rsPreviousDelayL :: Lens' RetryStatus (Maybe Int)
-rsPreviousDelayL = undefined
+rsPreviousDelayL = lens rsPreviousDelay (\rs x -> rs { rsPreviousDelay = x })
 {-# INLINE rsPreviousDelayL #-}
 
 
