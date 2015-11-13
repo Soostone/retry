@@ -97,13 +97,13 @@ spec = parallel $ describe "retry" $ do
 
 
   describe "recovering - exception hierarcy semantics" $ do
-    it "does not catch enclosed exceptions" $ do
+    it "does not catch async exceptions" $ do
       counter <- newTVarIO 0
       done <- newEmptyMVar
       let work = atomically (modifyTVar' counter succ) >> threadDelay 1000000
 
       tid <- forkIO $
-        recoverAll (limitRetries 2) work `finally` putMVar done ()
+        recoverAll (limitRetries 2) (const work) `finally` putMVar done ()
 
       atomically (check . (== 1) =<< readTVar counter)
       throwTo tid UserInterrupt
