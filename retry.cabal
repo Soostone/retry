@@ -24,7 +24,10 @@ copyright:           Ozgun Ataman, Soostone Inc
 category:            Control
 build-type:          Simple
 cabal-version:       >=1.10
-Homepage:            http://github.com/Soostone/retry
+homepage:            http://github.com/Soostone/retry
+extra-source-files:
+  README.md
+  changelog.md
 
 library
   exposed-modules:     Control.Retry
