@@ -53,4 +53,5 @@ test-suite test
       , QuickCheck         >= 2.7 && < 2.9
       , HUnit              >= 1.2.5.2 && < 1.3
       , hspec              >= 1.9
+      , stm
     default-language: Haskell2010
