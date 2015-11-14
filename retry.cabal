@@ -32,7 +32,7 @@ extra-source-files:
 library
   exposed-modules:     Control.Retry
   build-depends:
-      base                 ==4.*
+      base                 >= 4.6 && < 5
     , data-default-class
     , exceptions           >= 0.5 && < 0.9
     , random               >= 1 && < 1.2
