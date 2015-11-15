@@ -1,3 +1,6 @@
+0.7.0.1
+* Officially drop support for GHC < 7.6 due to usage of Generics.
+
 0.7
 * RetryPolicy has become RetryPolicyM, allowing for policy logic to
   consult the monad context.
