@@ -50,6 +50,7 @@ module Control.Retry
     -- * Applying Retry Policies
     , retrying
     , recovering
+    , stepping
     , recoverAll
     , logRetries
 
@@ -354,21 +355,17 @@ retrying  :: MonadIO m
           -> (RetryStatus -> m b)
           -- ^ Action to run
           -> m b
-retrying (RetryPolicyM policy) chk f = go defaultRetryStatus
+retrying policy chk f = go defaultRetryStatus
   where
     go s = do
         res <- f s
         chk' <- chk s res
         case chk' of
           True -> do
-            chk <- policy s
-            case chk of
-              Just delay -> do
-                liftIO (threadDelay delay)
-                go $! RetryStatus { rsIterNumber = rsIterNumber s + 1
-                                  , rsCumulativeDelay = rsCumulativeDelay s + delay
-                                  , rsPreviousDelay = Just (maybe 0 (const delay) (rsPreviousDelay s))}
+            rs <- applyAndDelay policy s
+            case rs of
               Nothing -> return res
+              Just rs' -> go $! rs'
           False -> return res
 
 
@@ -426,21 +423,21 @@ recoverAll set f = recovering set handlers f
 -- 'recoverAll'
 recovering
 #if MIN_VERSION_exceptions(0, 6, 0)
-           :: (MonadIO m, MonadMask m)
+    :: (MonadIO m, MonadMask m)
 #else
-           :: (MonadIO m, MonadCatch m)
+    :: (MonadIO m, MonadCatch m)
 #endif
-           => RetryPolicyM m
-           -- ^ Just use 'def' for default settings
-           -> [(RetryStatus -> Handler m Bool)]
-           -- ^ Should a given exception be retried? Action will be
-           -- retried if this returns True *and* the policy allows it.
-           -- This action will be consulted first even if the policy
-           -- later blocks it.
-           -> (RetryStatus -> m a)
-           -- ^ Action to perform
-           -> m a
-recovering p@(RetryPolicyM policy) hs f = mask $ \restore -> go restore defaultRetryStatus
+    => RetryPolicyM m
+    -- ^ Just use 'def' for default settings
+    -> [(RetryStatus -> Handler m Bool)]
+    -- ^ Should a given exception be retried? Action will be
+    -- retried if this returns True *and* the policy allows it.
+    -- This action will be consulted first even if the policy
+    -- later blocks it.
+    -> (RetryStatus -> m a)
+    -- ^ Action to perform
+    -> m a
+recovering policy hs f = mask $ \restore -> go restore defaultRetryStatus
     where
       go restore = loop
         where
@@ -456,16 +453,56 @@ recovering p@(RetryPolicyM policy) hs f = mask $ \restore -> go restore defaultR
                     chk <- h e'
                     case chk of
                       True -> do
-                        res <- policy s
-                        case res of
-                          Just delay -> do
-                            liftIO $ threadDelay delay
-                            loop $! RetryStatus { rsIterNumber = rsIterNumber s + 1
-                                                , rsCumulativeDelay = rsCumulativeDelay s + delay
-                                                , rsPreviousDelay = Just delay }
+                        rs <- applyAndDelay policy s
+                        case rs of
+                          Just rs' -> loop $! rs'
                           Nothing -> throwM e'
                       False -> throwM e'
                 | otherwise = recover e hs'
+
+
+
+stepping
+#if MIN_VERSION_exceptions(0, 6, 0)
+    :: (MonadIO m, MonadMask m)
+#else
+    :: (MonadIO m, MonadCatch m)
+#endif
+    => RetryPolicyM m
+    -- ^ Just use 'def' for default settings
+    -> [(RetryStatus -> Handler m Bool)]
+    -- ^ Should a given exception be retried? Action will be
+    -- retried if this returns True *and* the policy allows it.
+    -- This action will be consulted first even if the policy
+    -- later blocks it.
+    -> (RetryStatus -> m ())
+    -- ^ Manual rescheduling action upon failure. 
+    -> RetryStatus
+    -- ^ Current status of this step
+    -> (RetryStatus -> m a)
+    -- ^ Action to perform
+    -> m (Maybe a)
+stepping policy hs schedule s f = do
+    r <- try $ f s
+    case r of
+      Right x -> return $ Just x
+      Left e -> recover (e :: SomeException) hs
+    where
+      recover e [] = throwM e
+      recover e ((($ s) -> Handler h) : hs')
+        | Just e' <- fromException e = do
+            chk <- h e'
+            case chk of
+              True -> do
+                
+                res <- applyAndDelay policy s
+                case res of
+                  Just rs -> do
+                    schedule $! rs
+                    return Nothing
+                  Nothing -> throwM e'
+              False -> throwM e'
+        | otherwise = recover e hs'
 
 
 -------------------------------------------------------------------------------
