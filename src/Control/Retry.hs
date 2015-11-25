@@ -422,7 +422,7 @@ recovering p@(RetryPolicyM policy) hs f = mask $ \restore -> go restore defaultR
                             liftIO $ threadDelay delay
                             loop $! RetryStatus { rsIterNumber = rsIterNumber s + 1
                                                 , rsCumulativeDelay = rsCumulativeDelay s + delay
-                                                , rsPreviousDelay = Just (maybe 0 (const delay) (rsPreviousDelay s))}
+                                                , rsPreviousDelay = Just delay }
                           Nothing -> throwM e'
                       False -> throwM e'
                 | otherwise = recover e hs'
