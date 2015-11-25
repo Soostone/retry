@@ -32,7 +32,10 @@ module Control.Retry
       RetryPolicyM (..)
     , RetryPolicy
     , retryPolicy
-    , RetryStatus
+    , RetryStatus (..)
+    , applyPolicy
+    , applyAndDelay
+
     -- ** Fields for 'RetryStatus'
     , rsIterNumber
     , rsCumulativeDelay
@@ -163,7 +166,7 @@ data RetryStatus = RetryStatus
     { rsIterNumber      :: !Int -- ^ Iteration number, where 0 is the first try
     , rsCumulativeDelay :: !Int -- ^ Delay incurred so far from retries in microseconds
     , rsPreviousDelay   :: !(Maybe Int) -- ^ Previous attempt's delay. Will always be Nothing on first run.
-    } deriving (Show, Eq, Generic)
+    } deriving (Read, Show, Eq, Generic)
 
 
 -------------------------------------------------------------------------------
@@ -188,6 +191,43 @@ rsCumulativeDelayL = lens rsCumulativeDelay (\rs x -> rs { rsCumulativeDelay = x
 rsPreviousDelayL :: Lens' RetryStatus (Maybe Int)
 rsPreviousDelayL = lens rsPreviousDelay (\rs x -> rs { rsPreviousDelay = x })
 {-# INLINE rsPreviousDelayL #-}
+
+
+
+-------------------------------------------------------------------------------
+applyPolicy 
+    :: Monad m 
+    => RetryPolicyM m 
+    -> RetryStatus 
+    -> m (Maybe RetryStatus)
+applyPolicy (RetryPolicyM policy) s = do
+    res <- policy s
+    case res of
+      Just delay -> return $! Just $! RetryStatus 
+          { rsIterNumber = rsIterNumber s + 1
+          , rsCumulativeDelay = rsCumulativeDelay s + delay
+          , rsPreviousDelay = Just delay }
+      Nothing -> return Nothing
+
+
+-------------------------------------------------------------------------------
+-- | Apply policy and delay by its amount if directed so.
+applyAndDelay
+    :: MonadIO m 
+    => RetryPolicyM m 
+    -> RetryStatus 
+    -> m (Maybe RetryStatus)
+applyAndDelay policy s = do
+    chk <- applyPolicy policy s
+    case chk of
+      Just rs -> do
+        case (rsPreviousDelay rs) of
+          Nothing -> return ()
+          Just delay -> liftIO $ threadDelay delay
+        return (Just rs)
+      Nothing -> return Nothing
+
+    
 
 
 -------------------------------------------------------------------------------
