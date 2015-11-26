@@ -33,14 +33,10 @@ module Control.Retry
     , RetryPolicy
     , retryPolicy
     , RetryStatus (..)
+    , defaultRetryStatus
     , applyPolicy
     , applyAndDelay
 
-    -- ** Fields for 'RetryStatus'
-    , rsIterNumber
-    , rsCumulativeDelay
-    , rsPreviousDelay
-    , defaultRetryStatus
 
     -- ** Lenses for 'RetryStatus'
     , rsIterNumberL
@@ -166,7 +162,7 @@ instance Monad m => Monoid (RetryPolicyM m) where
 data RetryStatus = RetryStatus
     { rsIterNumber      :: !Int -- ^ Iteration number, where 0 is the first try
     , rsCumulativeDelay :: !Int -- ^ Delay incurred so far from retries in microseconds
-    , rsPreviousDelay   :: !(Maybe Int) -- ^ Previous attempt's delay. Will always be Nothing on first run.
+    , rsPreviousDelay   :: !(Maybe Int) -- ^ Latest attempt's delay. Will always be Nothing on first run.
     } deriving (Read, Show, Eq, Generic)
 
 
@@ -196,6 +192,8 @@ rsPreviousDelayL = lens rsPreviousDelay (\rs x -> rs { rsPreviousDelay = x })
 
 
 -------------------------------------------------------------------------------
+-- | Apply policy on status to see what the decision would be.
+-- 'Nothing' implies no retry, 'Just' returns updated status.
 applyPolicy 
     :: Monad m 
     => RetryPolicyM m 
@@ -212,7 +210,8 @@ applyPolicy (RetryPolicyM policy) s = do
 
 
 -------------------------------------------------------------------------------
--- | Apply policy and delay by its amount if directed so.
+-- | Apply policy and delay by its amount if it results in a retry.
+-- Return updated status.
 applyAndDelay
     :: MonadIO m 
     => RetryPolicyM m 
@@ -229,7 +228,6 @@ applyAndDelay policy s = do
       Nothing -> return Nothing
 
     
-
 
 -------------------------------------------------------------------------------
 -- | Helper for making simplified policies that don't use the monadic
@@ -462,6 +460,11 @@ recovering policy hs f = mask $ \restore -> go restore defaultRetryStatus
 
 
 
+-------------------------------------------------------------------------------
+-- | A version of 'recovering' that tries to run the action only a
+-- single time. The control will return immediately upon both success
+-- and failure. Useful for implementing retry logic in distributed
+-- queues and similar external-interfacing systems.
 stepping
 #if MIN_VERSION_exceptions(0, 6, 0)
     :: (MonadIO m, MonadMask m)
@@ -476,13 +479,13 @@ stepping
     -- This action will be consulted first even if the policy
     -- later blocks it.
     -> (RetryStatus -> m ())
-    -- ^ Manual rescheduling action upon failure. 
+    -- ^ Action to run with updated status upon failure.
+    -> (RetryStatus -> m a)
+    -- ^ Main action to perform with current status.
     -> RetryStatus
     -- ^ Current status of this step
-    -> (RetryStatus -> m a)
-    -- ^ Action to perform
     -> m (Maybe a)
-stepping policy hs schedule s f = do
+stepping policy hs schedule f s = do
     r <- try $ f s
     case r of
       Right x -> return $ Just x
@@ -495,7 +498,7 @@ stepping policy hs schedule s f = do
             case chk of
               True -> do
                 
-                res <- applyAndDelay policy s
+                res <- applyPolicy policy s
                 case res of
                   Just rs -> do
                     schedule $! rs
