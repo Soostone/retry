@@ -8,8 +8,9 @@ import           Control.Applicative
 import           Control.Concurrent
 import           Control.Concurrent.MVar
 import           Control.Concurrent.STM
-import           Control.Exception        (AsyncException (..), MaskingState (..),
-                                           getMaskingState, throwTo)
+import           Control.Exception        (AsyncException (..),
+                                           MaskingState (..), getMaskingState,
+                                           throwTo)
 import           Control.Monad.Catch
 import           Control.Monad.IO.Class
 import           Data.Default.Class       (def)
@@ -218,7 +219,7 @@ spec = parallel $ describe "retry" $ do
       rses <- readIORef r
       rsIterNumber <$> rses @?= [0, 1, 2]
       rsCumulativeDelay <$> rses @?= [0, 100, 200]
-      rsPreviousDelay <$> rses @?= [Nothing, Just 0, Just 100]
+      rsPreviousDelay <$> rses @?= [Nothing, Just 100, Just 100]
 
   describe "masking state" $ do
 

@@ -496,8 +496,7 @@ stepping policy hs schedule f s = do
         | Just e' <- fromException e = do
             chk <- h e'
             case chk of
-              True -> do
-                
+              True -> do                
                 res <- applyPolicy policy s
                 case res of
                   Just rs -> do
