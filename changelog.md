@@ -1,3 +1,10 @@
+0.7.1
+* Various documentation updates.
+* Add stepping combinator for manual retries.
+* Add applyPolicy and applyAndDelay
+* Add Read instance for RetryStatus
+* Fix logic bug in rsPreviousDelay in first retry
+
 0.7.0.1
 * Officially drop support for GHC < 7.6 due to usage of Generics.
 
