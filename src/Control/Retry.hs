@@ -49,6 +49,7 @@ module Control.Retry
     , stepping
     , recoverAll
     , logRetries
+    , defaultLogMsg
 
     -- * Retry Policies
     , constantDelay
@@ -514,19 +515,24 @@ logRetries
     :: (Monad m, Show e, Exception e)
     => (e -> m Bool)
     -- ^ Test for whether action is to be retried
-    -> (Bool -> String -> m ())
+    -> (Bool -> e -> RetryStatus -> m ())
     -- ^ How to report the generated warning message. Boolean is
     -- whether it's being retried or crashed.
     -> RetryStatus
     -- ^ Retry number
     -> Handler m Bool
-logRetries f report s = Handler $ \ e -> do
-    res <- f e
-    let msg = "[retry:" <> show n <> "] Encountered " <> show e <> ". " <>
-              if res then "Retrying." else "Crashing."
-    report res msg
-    return res
-  where n = rsIterNumber s
+logRetries test reporter status = Handler $ \ err -> do
+    result <- test err
+    reporter result err status
+    return result
+
+-- | For use with 'logRetries'.
+defaultLogMsg :: (Show e, Exception e) => Bool -> e -> RetryStatus -> String
+defaultLogMsg shouldRetry err status =
+    "[retry:" <> iter <> "] Encountered " <> show err <> ". " <> next
+  where
+    iter = show $ rsIterNumber status
+    next = if shouldRetry then "Retrying." else "Crashing."
 
 
 -------------------------------------------------------------------------------
