@@ -3,6 +3,7 @@
 {-# LANGUAGE DeriveGeneric         #-}
 {-# LANGUAGE RankNTypes            #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE TupleSections         #-}
 {-# LANGUAGE ViewPatterns          #-}
 
 -----------------------------------------------------------------------------
@@ -51,6 +52,10 @@ module Control.Retry
     , logRetries
     , defaultLogMsg
 
+#if MIN_VERSION_mtl(2, 2, 0)
+    , retryE
+#endif
+
     -- * Retry Policies
     , constantDelay
     , exponentialBackoff
@@ -78,6 +83,9 @@ import           Control.Exception (AsyncException)
 #endif
 import           Control.Monad
 import           Control.Monad.Catch
+#if MIN_VERSION_mtl(2, 2, 0)
+import           Control.Monad.Except
+#endif
 import           Control.Monad.IO.Class
 import           Control.Monad.Trans.Class
 import           Control.Monad.Trans.Maybe
@@ -367,6 +375,27 @@ retrying policy chk f = go defaultRetryStatus
               Just rs' -> go $! rs'
           False -> return res
 
+#if MIN_VERSION_mtl(2, 2, 0)
+retryE :: (Functor m, MonadError e m, MonadIO m)
+       => RetryPolicyM m
+       -> (Int -> e -> m Bool)
+       -> m a
+       -> m a
+retryE (RetryPolicyM policy) chk f = go 0
+    where
+      go n = do
+        res <- (Right <$> f) `catchError` (\e -> Left . (e, ) <$> chk n e)
+        case res of
+          Right x -> return x
+          Left (e, True) -> do
+            chk <- policy n
+            case chk of
+              Just delay -> do
+                liftIO (threadDelay delay)
+                go $! n+1
+              Nothing -> throwError e
+          Left (e, False) -> throwError e
+#endif
 
 -------------------------------------------------------------------------------
 -- | Retry ALL exceptions that may be raised. To be used with caution;
