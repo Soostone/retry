@@ -71,6 +71,7 @@ module Control.Retry
 import           Control.Applicative
 import           Control.Arrow
 import           Control.Concurrent
+import           Control.Concurrent.Thread.Delay (delay)
 #if MIN_VERSION_base(4, 7, 0)
 import           Control.Exception (AsyncException, SomeAsyncException)
 #else
@@ -129,7 +130,7 @@ import           Prelude                hiding (catch)
 -- >> myPolicy = retryPolicy $ \ rs -> if rsIterNumber n > 10 then Just 1000 else Just 10000
 --
 -- Since 0.7.
-newtype RetryPolicyM m = RetryPolicyM { getRetryPolicyM :: RetryStatus -> m (Maybe Int) }
+newtype RetryPolicyM m = RetryPolicyM { getRetryPolicyM :: RetryStatus -> m (Maybe Integer) }
 
 
 -- | Simplified 'RetryPolicyM' without any use of the monadic context in
@@ -161,9 +162,9 @@ instance Monad m => Monoid (RetryPolicyM m) where
 -- >> retryStatus { rsIterNumber = newIterNumber }
 -- >> retryStatus & rsIterNumberL .~ newIterNumber
 data RetryStatus = RetryStatus
-    { rsIterNumber      :: !Int -- ^ Iteration number, where 0 is the first try
-    , rsCumulativeDelay :: !Int -- ^ Delay incurred so far from retries in microseconds
-    , rsPreviousDelay   :: !(Maybe Int) -- ^ Latest attempt's delay. Will always be Nothing on first run.
+    { rsIterNumber      :: !Integer -- ^ Iteration number, where 0 is the first try
+    , rsCumulativeDelay :: !Integer -- ^ Delay incurred so far from retries in microseconds
+    , rsPreviousDelay   :: !(Maybe Integer) -- ^ Latest attempt's delay. Will always be Nothing on first run.
     } deriving (Read, Show, Eq, Generic)
 
 
@@ -174,19 +175,19 @@ defaultRetryStatus :: RetryStatus
 defaultRetryStatus = RetryStatus 0 0 Nothing
 
 -------------------------------------------------------------------------------
-rsIterNumberL :: Lens' RetryStatus Int
+rsIterNumberL :: Lens' RetryStatus Integer
 rsIterNumberL = lens rsIterNumber (\rs x -> rs { rsIterNumber = x })
 {-# INLINE rsIterNumberL #-}
 
 
 -------------------------------------------------------------------------------
-rsCumulativeDelayL :: Lens' RetryStatus Int
+rsCumulativeDelayL :: Lens' RetryStatus Integer
 rsCumulativeDelayL = lens rsCumulativeDelay (\rs x -> rs { rsCumulativeDelay = x })
 {-# INLINE rsCumulativeDelayL #-}
 
 
 -------------------------------------------------------------------------------
-rsPreviousDelayL :: Lens' RetryStatus (Maybe Int)
+rsPreviousDelayL :: Lens' RetryStatus (Maybe Integer)
 rsPreviousDelayL = lens rsPreviousDelay (\rs x -> rs { rsPreviousDelay = x })
 {-# INLINE rsPreviousDelayL #-}
 
@@ -195,15 +196,15 @@ rsPreviousDelayL = lens rsPreviousDelay (\rs x -> rs { rsPreviousDelay = x })
 -------------------------------------------------------------------------------
 -- | Apply policy on status to see what the decision would be.
 -- 'Nothing' implies no retry, 'Just' returns updated status.
-applyPolicy 
-    :: Monad m 
-    => RetryPolicyM m 
-    -> RetryStatus 
+applyPolicy
+    :: Monad m
+    => RetryPolicyM m
+    -> RetryStatus
     -> m (Maybe RetryStatus)
 applyPolicy (RetryPolicyM policy) s = do
     res <- policy s
     case res of
-      Just delay -> return $! Just $! RetryStatus 
+      Just delay -> return $! Just $! RetryStatus
           { rsIterNumber = rsIterNumber s + 1
           , rsCumulativeDelay = rsCumulativeDelay s + delay
           , rsPreviousDelay = Just delay }
@@ -214,9 +215,9 @@ applyPolicy (RetryPolicyM policy) s = do
 -- | Apply policy and delay by its amount if it results in a retry.
 -- Return updated status.
 applyAndDelay
-    :: MonadIO m 
-    => RetryPolicyM m 
-    -> RetryStatus 
+    :: MonadIO m
+    => RetryPolicyM m
+    -> RetryStatus
     -> m (Maybe RetryStatus)
 applyAndDelay policy s = do
     chk <- applyPolicy policy s
@@ -224,23 +225,23 @@ applyAndDelay policy s = do
       Just rs -> do
         case (rsPreviousDelay rs) of
           Nothing -> return ()
-          Just delay -> liftIO $ threadDelay delay
+          Just us -> liftIO $ delay us
         return (Just rs)
       Nothing -> return Nothing
 
-    
+
 
 -------------------------------------------------------------------------------
 -- | Helper for making simplified policies that don't use the monadic
 -- context.
-retryPolicy :: (RetryStatus -> Maybe Int) -> RetryPolicy
+retryPolicy :: (RetryStatus -> Maybe Integer) -> RetryPolicy
 retryPolicy f = RetryPolicyM $ \ s -> return (f s)
 
 
 -------------------------------------------------------------------------------
 -- | Retry immediately, but only up to @n@ times.
 limitRetries
-    :: Int
+    :: Integer
     -- ^ Maximum number of retries.
     -> RetryPolicy
 limitRetries i = retryPolicy $ \ RetryStatus { rsIterNumber = n} -> if n >= i then Nothing else (Just 0)
@@ -251,7 +252,7 @@ limitRetries i = retryPolicy $ \ RetryStatus { rsIterNumber = n} -> if n >= i th
 -- amount has been reached or exceeded, the policy will stop retrying
 -- and fail.
 limitRetriesByDelay
-    :: Int
+    :: Integer
     -- ^ Time-delay limit in microseconds.
     -> RetryPolicy
     -> RetryPolicy
@@ -264,7 +265,7 @@ limitRetriesByDelay i p = RetryPolicyM $ \ n ->
 -------------------------------------------------------------------------------
 -- | Implement a constant delay with unlimited retries.
 constantDelay
-    :: Int
+    :: Integer
     -- ^ Base delay in microseconds
     -> RetryPolicy
 constantDelay delay = retryPolicy (const (Just delay))
@@ -274,7 +275,7 @@ constantDelay delay = retryPolicy (const (Just delay))
 -- | Grow delay exponentially each iteration.  Each delay will
 -- increase by a factor of two.
 exponentialBackoff
-    :: Int
+    :: Integer
     -- ^ First delay in microseconds
     -> RetryPolicy
 exponentialBackoff base = retryPolicy $ \ RetryStatus { rsIterNumber = n} -> Just (2^n * base)
@@ -289,7 +290,7 @@ exponentialBackoff base = retryPolicy $ \ RetryStatus { rsIterNumber = n} -> Jus
 -- temp = min(cap, base * 2 ** attempt)
 --
 -- sleep = temp / 2 + random_between(0, temp / 2)
-fullJitterBackoff :: MonadIO m => Int -> RetryPolicyM m
+fullJitterBackoff :: MonadIO m => Integer -> RetryPolicyM m
 fullJitterBackoff base = RetryPolicyM $ \RetryStatus { rsIterNumber = n } -> do
   let d = (2^n * base) `div` 2
   rand <- liftIO $ randomRIO (0, d)
@@ -299,7 +300,7 @@ fullJitterBackoff base = RetryPolicyM $ \RetryStatus { rsIterNumber = n } -> do
 -------------------------------------------------------------------------------
 -- | Implement Fibonacci backoff.
 fibonacciBackoff
-    :: Int
+    :: Integer
     -- ^ Base delay in microseconds
     -> RetryPolicy
 fibonacciBackoff base = retryPolicy $ \ RetryStatus { rsIterNumber = n } -> Just $ fib (n + 1) (0, base)
@@ -317,7 +318,7 @@ fibonacciBackoff base = retryPolicy $ \ RetryStatus { rsIterNumber = n } -> Just
 -- 'limitRetries' function variants.
 capDelay
     :: Monad m
-    => Int
+    => Integer
     -- ^ A maximum delay in microseconds
     -> RetryPolicyM m
     -> RetryPolicyM m
@@ -497,7 +498,7 @@ stepping policy hs schedule f s = do
         | Just e' <- fromException e = do
             chk <- h e'
             case chk of
-              True -> do                
+              True -> do
                 res <- applyPolicy policy s
                 case res of
                   Just rs -> do
@@ -537,9 +538,9 @@ defaultLogMsg shouldRetry err status =
 
 -------------------------------------------------------------------------------
 -- | Run given policy up to N iterations and gather results. In the
--- pair, the @Int@ is the iteration number and the @Maybe Int@ is the
+-- pair, the @Integer@ is the iteration number and the @Maybe Integer@ is the
 -- delay in microseconds.
-simulatePolicy :: Monad m => Int -> RetryPolicyM m -> m [(Int, Maybe Int)]
+simulatePolicy :: Monad m => Integer -> RetryPolicyM m -> m [(Integer, Maybe Integer)]
 simulatePolicy n (RetryPolicyM f) = flip evalStateT defaultRetryStatus $ forM [0..n] $ \i -> do
   stat <- get
   delay <- lift (f stat)
@@ -550,7 +551,7 @@ simulatePolicy n (RetryPolicyM f) = flip evalStateT defaultRetryStatus $ forM [0
 -------------------------------------------------------------------------------
 -- | Run given policy up to N iterations and pretty print results on
 -- the console.
-simulatePolicyPP :: Int -> RetryPolicyM IO -> IO ()
+simulatePolicyPP :: Integer -> RetryPolicyM IO -> IO ()
 simulatePolicyPP n p = do
     ps <- simulatePolicy n p
     forM_ ps $ \ (n, res) -> putStrLn $
@@ -562,7 +563,6 @@ simulatePolicyPP n p = do
 -------------------------------------------------------------------------------
 ppTime :: (Integral a, Show a) => a -> String
 ppTime n | n < 1000 = show n <> "us"
-         | n < 1000000 = show (fromIntegral n / 1000) <> "ms"
          | otherwise = show (fromIntegral n / 1000) <> "ms"
 
 
