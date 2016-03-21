@@ -8,24 +8,28 @@ import           Control.Applicative
 import           Control.Concurrent
 import           Control.Concurrent.MVar
 import           Control.Concurrent.STM
-import           Control.Exception        (AsyncException (..),
-                                           MaskingState (..), getMaskingState,
-                                           throwTo)
+import           Control.Exception           (AsyncException (..),
+                                              MaskingState (..),
+                                              getMaskingState, throwTo)
 import           Control.Monad.Catch
+import           Control.Monad.Identity
 import           Control.Monad.IO.Class
-import           Data.Default.Class       (def)
+import           Control.Monad.Writer.Strict
+import           Data.Default.Class          (def)
 import           Data.IORef
+import           Data.List
+import           Data.Maybe
 import           Data.Monoid
 import           Data.Time.Clock
-import           Data.Time.LocalTime      ()
+import           Data.Time.LocalTime         ()
 import           Data.Typeable
 import           System.IO.Error
 import           Test.Hspec
 import           Test.Hspec.QuickCheck
-import           Test.HUnit               (Test (TestCase), (@?=))
+import           Test.HUnit                  (Test (TestCase), (@?=))
 import           Test.QuickCheck
 import           Test.QuickCheck.Function
-import           Test.QuickCheck.Monadic  as QCM
+import           Test.QuickCheck.Monadic     as QCM
 -------------------------------------------------------------------------------
 import           Control.Retry
 -------------------------------------------------------------------------------
@@ -76,6 +80,14 @@ mkFailN e n = do
         True -> return ()
         False -> throwM e
 
+
+gatherStatuses
+    :: MonadIO m
+    => RetryPolicyM (WriterT [RetryStatus] m)
+    -> m [RetryStatus]
+gatherStatuses policy = execWriterT $
+  retrying policy (\_ _ -> return True)
+                  (\rs -> tell [rs])
 
 
 {-# ANN spec ("HLint: ignore Redundant do"::String) #-}
@@ -213,13 +225,26 @@ spec = parallel $ describe "retry" $ do
 
     it "passes in the correct retry status each time" $ do
       let policy = limitRetries 2 <> constantDelay 100
-      r <- newIORef []
-      retrying policy (\_ _ -> return True)
-                      (\rs -> modifyIORef' r (\acc -> acc ++ [rs]))
-      rses <- readIORef r
+      rses <- gatherStatuses policy
       rsIterNumber <$> rses @?= [0, 1, 2]
       rsCumulativeDelay <$> rses @?= [0, 100, 200]
       rsPreviousDelay <$> rses @?= [Nothing, Just 100, Just 100]
+
+  describe "policy transformers" $ do
+    prop "always produces positive delay with positive constants (no rollover)" $ \(Positive delay) ->
+      let res = runIdentity (simulatePolicy 1000 (exponentialBackoff delay))
+          delays = catMaybes (snd <$> res)
+          mnDelay = if null delays
+                      then Nothing
+                      else Just (minimum delays)
+      in case mnDelay of
+           Nothing -> property True
+           Just n -> counterexample (show n ++ " is not >= 0") (property (n >= 0))
+
+    prop "exponential backoff is always incrementing" $ \(Positive delay) ->
+      let res = runIdentity (simulatePolicy 1000 (exponentialBackoff delay))
+          delays = catMaybes (snd <$> res)
+      in sort delays === delays .&&. length (group delays) === length delays
 
   describe "masking state" $ do
 
