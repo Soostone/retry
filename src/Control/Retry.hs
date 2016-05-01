@@ -543,7 +543,11 @@ simulatePolicy :: Monad m => Int -> RetryPolicyM m -> m [(Int, Maybe Int)]
 simulatePolicy n (RetryPolicyM f) = flip evalStateT defaultRetryStatus $ forM [0..n] $ \i -> do
   stat <- get
   delay <- lift (f stat)
-  put stat { rsIterNumber = i + 1, rsCumulativeDelay = rsCumulativeDelay stat + fromMaybe 0 delay}
+  put $! stat
+    { rsIterNumber = i + 1
+    , rsCumulativeDelay = rsCumulativeDelay stat `boundedPlus` fromMaybe 0 delay
+    , rsPreviousDelay = delay
+    }
   return (i, delay)
 
 
