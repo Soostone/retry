@@ -1,8 +1,11 @@
 {-# LANGUAGE BangPatterns          #-}
 {-# LANGUAGE CPP                   #-}
 {-# LANGUAGE DeriveGeneric         #-}
+{-# LANGUAGE MagicHash             #-}
 {-# LANGUAGE RankNTypes            #-}
+{-# LANGUAGE RecordWildCards       #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE UnboxedTuples         #-}
 {-# LANGUAGE ViewPatterns          #-}
 
 -----------------------------------------------------------------------------
@@ -83,9 +86,12 @@ import           Control.Monad.Trans.Class
 import           Control.Monad.Trans.Maybe
 import           Control.Monad.Trans.State
 import           Data.Default.Class
+import           Data.List (foldl')
 import           Data.Functor.Identity
 import           Data.Maybe
 import           GHC.Generics
+import           GHC.Prim
+import           GHC.Types (Int(I#))
 import           System.Random
 import           Data.Monoid
 import           Prelude                hiding (catch)
@@ -205,7 +211,7 @@ applyPolicy (RetryPolicyM policy) s = do
     case res of
       Just delay -> return $! Just $! RetryStatus 
           { rsIterNumber = rsIterNumber s + 1
-          , rsCumulativeDelay = rsCumulativeDelay s + delay
+          , rsCumulativeDelay = rsCumulativeDelay s `boundedPlus` delay
           , rsPreviousDelay = Just delay }
       Nothing -> return Nothing
 
@@ -277,8 +283,8 @@ exponentialBackoff
     :: Int
     -- ^ First delay in microseconds
     -> RetryPolicy
-exponentialBackoff base = retryPolicy $ \ RetryStatus { rsIterNumber = n} -> Just (2^n * base)
-
+exponentialBackoff base = retryPolicy $ \ RetryStatus { rsIterNumber = n } ->
+  Just $! base `boundedMult` boundedPow 2 n
 
 -------------------------------------------------------------------------------
 -- | FullJitter exponential backoff as explained in AWS Architecture
@@ -290,10 +296,10 @@ exponentialBackoff base = retryPolicy $ \ RetryStatus { rsIterNumber = n} -> Jus
 --
 -- sleep = temp / 2 + random_between(0, temp / 2)
 fullJitterBackoff :: MonadIO m => Int -> RetryPolicyM m
-fullJitterBackoff base = RetryPolicyM $ \RetryStatus { rsIterNumber = n } -> do
-  let d = (2^n * base) `div` 2
+fullJitterBackoff base = RetryPolicyM $ \ RetryStatus { rsIterNumber = n } -> do
+  let d = (base `boundedMult` boundedPow 2 n) `div` 2
   rand <- liftIO $ randomRIO (0, d)
-  return $ Just $! d + rand
+  return $! Just $! d `boundedPlus` rand
 
 
 -------------------------------------------------------------------------------
@@ -302,10 +308,11 @@ fibonacciBackoff
     :: Int
     -- ^ Base delay in microseconds
     -> RetryPolicy
-fibonacciBackoff base = retryPolicy $ \ RetryStatus { rsIterNumber = n } -> Just $ fib (n + 1) (0, base)
+fibonacciBackoff base = retryPolicy $ \RetryStatus { rsIterNumber = n } ->
+  Just $ fib (n + 1) (0, base)
     where
       fib 0 (a, _) = a
-      fib !m (!a, !b) = fib (m-1) (b, a + b)
+      fib !m (!a, !b) = fib (m-1) (b, a `boundedPlus` b)
 
 
 -------------------------------------------------------------------------------
@@ -543,7 +550,11 @@ simulatePolicy :: Monad m => Int -> RetryPolicyM m -> m [(Int, Maybe Int)]
 simulatePolicy n (RetryPolicyM f) = flip evalStateT defaultRetryStatus $ forM [0..n] $ \i -> do
   stat <- get
   delay <- lift (f stat)
-  put stat { rsIterNumber = i + 1, rsCumulativeDelay = rsCumulativeDelay stat + fromMaybe 0 delay}
+  put $! stat
+    { rsIterNumber = i + 1
+    , rsCumulativeDelay = rsCumulativeDelay stat `boundedPlus` fromMaybe 0 delay
+    , rsPreviousDelay = delay
+    }
   return (i, delay)
 
 
@@ -556,7 +567,7 @@ simulatePolicyPP n p = do
     forM_ ps $ \ (n, res) -> putStrLn $
       show n <> ": " <> maybe "Inhibit" ppTime res
     putStrLn $ "Total cumulative delay would be: " <>
-      (ppTime $ sum $ (mapMaybe snd) ps)
+      (ppTime $ boundedSum $ (mapMaybe snd) ps)
 
 
 -------------------------------------------------------------------------------
@@ -565,6 +576,50 @@ ppTime n | n < 1000 = show n <> "us"
          | n < 1000000 = show (fromIntegral n / 1000) <> "ms"
          | otherwise = show (fromIntegral n / 1000) <> "ms"
 
+-------------------------------------------------------------------------------
+-- Bounded arithmetic
+-------------------------------------------------------------------------------
+
+-- | Same as '+' on 'Int' but it maxes out at @'maxBound' :: 'Int'@ or
+-- @'minBound' :: 'Int'@ rather than rolling over
+boundedPlus :: Int -> Int -> Int
+boundedPlus i@(I# i#) j@(I# j#) = case addIntC# i# j# of
+  (# k#, 0# #) -> I# k#
+  (# _, _ #)
+    | maxBy abs i j < 0 -> minBound
+    | otherwise -> maxBound
+  where
+    maxBy f a b = if f a >= f b then a else b
+
+-- | Same as '*' on 'Int' but it maxes out at @'maxBound' :: 'Int'@ or
+-- @'minBound' :: 'Int'@ rather than rolling over
+boundedMult :: Int -> Int -> Int
+boundedMult i@(I# i#) j@(I# j#) = case mulIntMayOflo# i# j# of
+  0# -> I# (i# *# j#)
+  _ | signum i * signum j < 0 -> minBound
+    | otherwise -> maxBound
+
+-- | Same as 'sum' on 'Int' but it maxes out at @'maxBound' :: 'Int'@ or
+-- @'minBound' :: 'Int'@ rather than rolling over
+boundedSum :: [Int] -> Int
+boundedSum = foldl' boundedPlus 0
+
+-- | Same as '^' on 'Int' but it maxes out at @'maxBound' :: 'Int'@ or
+-- @'MinBound' :: 'Int'@ rather than rolling over
+boundedPow :: Int -> Int -> Int
+boundedPow x0 y0
+  | y0 < 0 = error "Negative exponent"
+  | y0 == 0 = 1
+  | otherwise = f x0 y0
+  where
+    f x y
+      | even y = f (x `boundedMult` x) (y `quot` 2)
+      | y == 1 = x
+      | otherwise = g (x `boundedMult` x) ((y - 1) `quot` 2) x
+    g x y z
+      | even y = g (x `boundedMult` x) (y `quot` 2) z
+      | y == 1 = x `boundedMult` z
+      | otherwise = g (x `boundedMult` x) ((y - 1) `quot` 2) (x `boundedMult` z)
 
 -------------------------------------------------------------------------------
 -- Lens machinery
