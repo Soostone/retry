@@ -1,3 +1,6 @@
+0.7.2
+* Fix premature integer overflow error thanks to Mitsutoshi Aoe
+
 0.7.1
 * Various documentation updates.
 * Add stepping combinator for manual retries.
