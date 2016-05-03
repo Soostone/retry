@@ -59,4 +59,5 @@ test-suite test
       , hspec              >= 1.9
       , stm
       , ghc-prim
+      , mtl
     default-language: Haskell2010
