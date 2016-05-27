@@ -61,7 +61,9 @@ instance Arbitrary RetryStatus where
                                , rsCumulativeDelay = d
                                , rsPreviousDelay = getPositive <$> l})
 
-instance CoArbitrary RetryStatus
+instance CoArbitrary RetryStatus where
+  coarbitrary (RetryStatus a b c) = variant 0 . coarbitrary (a, b, c)
+
 
 instance Function RetryStatus where
   function = functionMap (\rs -> (rsIterNumber rs, rsCumulativeDelay rs, rsPreviousDelay rs))
