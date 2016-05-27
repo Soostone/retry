@@ -1,3 +1,6 @@
+0.7.3
+* Widen ghc-prim dependency for GHC 8
+
 0.7.2
 * Fix premature integer overflow error thanks to Mitsutoshi Aoe
 
