@@ -1,3 +1,6 @@
+0.7.4
+* Widen transformers dependency
+
 0.7.3
 * Widen ghc-prim dependency for GHC 8
 
