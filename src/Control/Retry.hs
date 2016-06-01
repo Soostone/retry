@@ -547,7 +547,7 @@ defaultLogMsg shouldRetry err status =
 
 -------------------------------------------------------------------------------
 retryOnError
-    :: (MonadIO m, MonadError e m)
+    :: (Functor m, MonadIO m, MonadError e m)
     => RetryPolicyM m
     -- ^ Policy
     -> (RetryStatus -> e -> m Bool)
