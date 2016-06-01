@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveDataTypeable  #-}
+{-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module RetrySpec where
@@ -12,6 +13,7 @@ import           Control.Exception           (AsyncException (..),
                                               MaskingState (..),
                                               getMaskingState, throwTo)
 import           Control.Monad.Catch
+import           Control.Monad.Except
 import           Control.Monad.Identity
 import           Control.Monad.IO.Class
 import           Control.Monad.Writer.Strict
@@ -192,6 +194,19 @@ spec = parallel $ describe "retry" $ do
           f
         (res :: Either Custom1 ()) `shouldBe` Left Custom1
 
+
+  describe "retryOnError" $ do
+    it "passes in the error type" $ do
+      errCalls <- newTVarIO []
+      let policy = limitRetries 2
+      let shouldRetry s e = do
+            liftIO (atomically (modifyTVar' errCalls (++ [e])))
+            return True
+      let action rs = (throwError ("boom" ++ show (rsIterNumber rs)))-- :: RetryStatus -> ExceptT String IO ()
+      res <- runExceptT (retryOnError policy shouldRetry action)
+      res `shouldBe` (Left "boom2" :: Either String ())
+      calls <- atomically (readTVar errCalls)
+      calls `shouldBe` ["boom0", "boom1", "boom2"]
 
 
   describe "Policy is a monoid" $ do

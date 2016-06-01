@@ -5,6 +5,7 @@
 {-# LANGUAGE RankNTypes            #-}
 {-# LANGUAGE RecordWildCards       #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE TupleSections         #-}
 {-# LANGUAGE UnboxedTuples         #-}
 {-# LANGUAGE ViewPatterns          #-}
 
@@ -53,6 +54,7 @@ module Control.Retry
     , recoverAll
     , logRetries
     , defaultLogMsg
+    , retryOnError
 
     -- * Retry Policies
     , constantDelay
@@ -81,6 +83,7 @@ import           Control.Exception (AsyncException)
 #endif
 import           Control.Monad
 import           Control.Monad.Catch
+import           Control.Monad.Except
 import           Control.Monad.IO.Class
 import           Control.Monad.Trans.Class
 import           Control.Monad.Trans.Maybe
@@ -201,15 +204,15 @@ rsPreviousDelayL = lens rsPreviousDelay (\rs x -> rs { rsPreviousDelay = x })
 -------------------------------------------------------------------------------
 -- | Apply policy on status to see what the decision would be.
 -- 'Nothing' implies no retry, 'Just' returns updated status.
-applyPolicy 
-    :: Monad m 
-    => RetryPolicyM m 
-    -> RetryStatus 
+applyPolicy
+    :: Monad m
+    => RetryPolicyM m
+    -> RetryStatus
     -> m (Maybe RetryStatus)
 applyPolicy (RetryPolicyM policy) s = do
     res <- policy s
     case res of
-      Just delay -> return $! Just $! RetryStatus 
+      Just delay -> return $! Just $! RetryStatus
           { rsIterNumber = rsIterNumber s + 1
           , rsCumulativeDelay = rsCumulativeDelay s `boundedPlus` delay
           , rsPreviousDelay = Just delay }
@@ -220,9 +223,9 @@ applyPolicy (RetryPolicyM policy) s = do
 -- | Apply policy and delay by its amount if it results in a retry.
 -- Return updated status.
 applyAndDelay
-    :: MonadIO m 
-    => RetryPolicyM m 
-    -> RetryStatus 
+    :: MonadIO m
+    => RetryPolicyM m
+    -> RetryStatus
     -> m (Maybe RetryStatus)
 applyAndDelay policy s = do
     chk <- applyPolicy policy s
@@ -234,7 +237,7 @@ applyAndDelay policy s = do
         return (Just rs)
       Nothing -> return Nothing
 
-    
+
 
 -------------------------------------------------------------------------------
 -- | Helper for making simplified policies that don't use the monadic
@@ -504,7 +507,7 @@ stepping policy hs schedule f s = do
         | Just e' <- fromException e = do
             chk <- h e'
             case chk of
-              True -> do                
+              True -> do
                 res <- applyPolicy policy s
                 case res of
                   Just rs -> do
@@ -540,6 +543,31 @@ defaultLogMsg shouldRetry err status =
   where
     iter = show $ rsIterNumber status
     next = if shouldRetry then "Retrying." else "Crashing."
+
+
+-------------------------------------------------------------------------------
+retryOnError
+    :: (MonadIO m, MonadError e m)
+    => RetryPolicyM m
+    -- ^ Policy
+    -> (RetryStatus -> e -> m Bool)
+    -- ^ Should an error be retried?
+    -> (RetryStatus -> m a)
+    -- ^ Action to perform
+    -> m a
+retryOnError policy chk f = go defaultRetryStatus
+  where
+    go stat = do
+      res <- (Right <$> f stat) `catchError` (\e -> Left . (e, ) <$> chk stat e)
+      case res of
+        Right x -> return x
+        Left (e, True) -> do
+          mstat' <- applyAndDelay policy stat
+          case mstat' of
+            Just stat' -> do
+              go $! stat'
+            Nothing -> throwError e
+        Left (e, False) -> throwError e
 
 
 -------------------------------------------------------------------------------
