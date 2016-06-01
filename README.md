@@ -33,4 +33,5 @@ Contributors, please list yourself here.
 - John Wiegley
 - Michael Snoyman
 - Michael Xavier
+- Toralf Wittner
 
