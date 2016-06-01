@@ -37,7 +37,7 @@ library
     , exceptions           >= 0.5 && < 0.9
     , ghc-prim             < 0.6
     , random               >= 1 && < 1.2
-    , transformers         < 0.6
+    , transformers         < 0.7
     , mtl
     , mtl-compat
   hs-source-dirs:      src
