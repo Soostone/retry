@@ -18,7 +18,7 @@ Please see haddocks for documentation.
 
 ## Changes
 
-See [changelog.md](changelog.md).
+See [https://github.com/Soostone/retry/blob/master/changelog.md](changelog.md).
 
 ## Author
 
