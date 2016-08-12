@@ -201,15 +201,15 @@ rsPreviousDelayL = lens rsPreviousDelay (\rs x -> rs { rsPreviousDelay = x })
 -------------------------------------------------------------------------------
 -- | Apply policy on status to see what the decision would be.
 -- 'Nothing' implies no retry, 'Just' returns updated status.
-applyPolicy 
-    :: Monad m 
-    => RetryPolicyM m 
-    -> RetryStatus 
+applyPolicy
+    :: Monad m
+    => RetryPolicyM m
+    -> RetryStatus
     -> m (Maybe RetryStatus)
 applyPolicy (RetryPolicyM policy) s = do
     res <- policy s
     case res of
-      Just delay -> return $! Just $! RetryStatus 
+      Just delay -> return $! Just $! RetryStatus
           { rsIterNumber = rsIterNumber s + 1
           , rsCumulativeDelay = rsCumulativeDelay s `boundedPlus` delay
           , rsPreviousDelay = Just delay }
@@ -220,9 +220,9 @@ applyPolicy (RetryPolicyM policy) s = do
 -- | Apply policy and delay by its amount if it results in a retry.
 -- Return updated status.
 applyAndDelay
-    :: MonadIO m 
-    => RetryPolicyM m 
-    -> RetryStatus 
+    :: MonadIO m
+    => RetryPolicyM m
+    -> RetryStatus
     -> m (Maybe RetryStatus)
 applyAndDelay policy s = do
     chk <- applyPolicy policy s
@@ -234,7 +234,7 @@ applyAndDelay policy s = do
         return (Just rs)
       Nothing -> return Nothing
 
-    
+
 
 -------------------------------------------------------------------------------
 -- | Helper for making simplified policies that don't use the monadic
@@ -504,7 +504,7 @@ stepping policy hs schedule f s = do
         | Just e' <- fromException e = do
             chk <- h e'
             case chk of
-              True -> do                
+              True -> do
                 res <- applyPolicy policy s
                 case res of
                   Just rs -> do
