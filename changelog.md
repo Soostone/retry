@@ -1,3 +1,6 @@
+0.7.4.2
+* Loosen HUnit dependency for tests.
+
 0.7.4.1
 * Loosen QuickCheck dependency for tests.
 
