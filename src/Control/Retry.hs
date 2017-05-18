@@ -294,7 +294,7 @@ exponentialBackoff base = retryPolicy $ \ RetryStatus { rsIterNumber = n } ->
 --
 -- temp = min(cap, base * 2 ** attempt)
 --
--- sleep = temp / 2 + random_between(0, temp / 2)
+-- sleep = temp \/ 2 + random_between(0, temp \/ 2)
 fullJitterBackoff :: MonadIO m => Int -> RetryPolicyM m
 fullJitterBackoff base = RetryPolicyM $ \ RetryStatus { rsIterNumber = n } -> do
   let d = (base `boundedMult` boundedPow 2 n) `div` 2
