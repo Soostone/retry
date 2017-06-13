@@ -6,3 +6,4 @@ cabal-dev
 *DS*
 *.swp
 TAGS
+.stack-work
