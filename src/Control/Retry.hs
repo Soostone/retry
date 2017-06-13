@@ -51,6 +51,7 @@ module Control.Retry
     , recovering
     , stepping
     , recoverAll
+    , skipAsyncExceptions
     , logRetries
     , defaultLogMsg
 
@@ -408,14 +409,27 @@ recoverAll
          -> m a
 recoverAll set f = recovering set handlers f
     where
-#if MIN_VERSION_base(4, 7, 0)
-      someAsyncH _ = Handler $ \(_ :: SomeAsyncException) -> return False
-      handlers = [asyncH, someAsyncH, h]
-#else
-      handlers = [asyncH, h]
-#endif
-      asyncH _ = Handler $ \ (_ :: AsyncException) -> return False
+      handlers = skipAsyncExceptions ++ [h]
       h _ = Handler $ \ (_ :: SomeException) -> return True
+
+
+-------------------------------------------------------------------------------
+-- | List of pre-made handlers that will skip retries on
+-- 'AsyncException' and 'SomeAsyncException'. Append your handlers to
+-- this list as a convenient way to make sure you're not catching
+-- async exceptions like user interrupt.
+skipAsyncExceptions 
+    :: (MonadIO m, MonadMask m) 
+    => [RetryStatus -> Handler m Bool]
+skipAsyncExceptions = handlers
+  where
+    asyncH _ = Handler $ \ (_ :: AsyncException) -> return False
+#if MIN_VERSION_base(4, 7, 0)
+    someAsyncH _ = Handler $ \(_ :: SomeAsyncException) -> return False
+    handlers = [asyncH, someAsyncH]
+#else
+    handlers = [asyncH]
+#endif
 
 
 -------------------------------------------------------------------------------
