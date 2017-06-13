@@ -1,3 +1,6 @@
+0.7.5
+* Add skipAsyncExceptions helper function
+
 0.7.4.2
 * Loosen HUnit dependency for tests.
 
