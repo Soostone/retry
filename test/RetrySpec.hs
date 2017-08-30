@@ -111,7 +111,7 @@ spec = parallel $ describe "retry" $ do
     QCM.assert (diffUTCTime endTime startTime >= ms')
 
 
-  describe "recovering - exception hierarcy semantics" $ do
+  describe "recovering - exception hierarchy semantics" $ do
     it "does not catch async exceptions" $ do
       counter <- newTVarIO 0
       done <- newEmptyMVar
