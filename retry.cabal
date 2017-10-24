@@ -54,8 +54,8 @@ test-suite test
       , data-default-class
       , random
       , time
-      , QuickCheck         >= 2.7 && < 2.10
-      , HUnit              >= 1.2.5.2 && < 1.6
+      , QuickCheck         >= 2.7 && <= 2.10
+      , HUnit              >= 1.2.5.2 && <= 1.6
       , hspec              >= 1.9
       , stm
       , ghc-prim
