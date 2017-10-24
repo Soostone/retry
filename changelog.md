@@ -1,3 +1,6 @@
+0.7.4.3
+* Loosen dependency upper bounds.
+
 0.7.5
 * Add skipAsyncExceptions helper function
 
