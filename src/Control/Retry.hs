@@ -94,7 +94,11 @@ import           GHC.Generics
 import           GHC.Prim
 import           GHC.Types (Int(I#))
 import           System.Random
+# if MIN_VERSION_base(4, 9, 0)
+import           Data.Semigroup
+# else
 import           Data.Monoid
+# endif
 import           Prelude                hiding (catch)
 -------------------------------------------------------------------------------
 
@@ -149,12 +153,28 @@ instance Monad m => Default (RetryPolicyM m) where
     def = constantDelay 50000 <> limitRetries 5
 
 
+-- Base 4.9.0 adds a Data.Semigroup module. This has fewer
+-- dependencies than the semigroups package, so we're using base's
+-- only if its available.
+# if MIN_VERSION_base(4, 9, 0)
+instance Monad m => Semigroup (RetryPolicyM m) where
+  (RetryPolicyM a) <> (RetryPolicyM b) = RetryPolicyM $ \ n -> runMaybeT $ do
+    a' <- MaybeT $ a n
+    b' <- MaybeT $ b n
+    return $! max a' b'
+
+
+instance Monad m => Monoid (RetryPolicyM m) where
+    mempty = retryPolicy $ const (Just 0)
+    mappend = (<>)
+# else
 instance Monad m => Monoid (RetryPolicyM m) where
     mempty = retryPolicy $ const (Just 0)
     (RetryPolicyM a) `mappend` (RetryPolicyM b) = RetryPolicyM $ \ n -> runMaybeT $ do
       a' <- MaybeT $ a n
       b' <- MaybeT $ b n
       return $! max a' b'
+#endif
 
 
 -------------------------------------------------------------------------------
