@@ -1,3 +1,6 @@
+0.7.5.0
+* Add Semigroup instance when the Semigroup class is available through base.
+
 0.7.4.3
 * Loosen dependency upper bounds.
 
