@@ -302,7 +302,7 @@ constantDelay delay = retryPolicy (const (Just delay))
 -- increase by a factor of two.
 exponentialBackoff
     :: Int
-    -- ^ First delay in microseconds
+    -- ^ Base delay in microseconds
     -> RetryPolicy
 exponentialBackoff base = retryPolicy $ \ RetryStatus { rsIterNumber = n } ->
   Just $! base `boundedMult` boundedPow 2 n
@@ -316,7 +316,11 @@ exponentialBackoff base = retryPolicy $ \ RetryStatus { rsIterNumber = n } ->
 -- temp = min(cap, base * 2 ** attempt)
 --
 -- sleep = temp \/ 2 + random_between(0, temp \/ 2)
-fullJitterBackoff :: MonadIO m => Int -> RetryPolicyM m
+fullJitterBackoff
+    :: MonadIO m
+    => Int
+    -- ^ Base delay in microseconds
+    -> RetryPolicyM m
 fullJitterBackoff base = RetryPolicyM $ \ RetryStatus { rsIterNumber = n } -> do
   let d = (base `boundedMult` boundedPow 2 n) `div` 2
   rand <- liftIO $ randomRIO (0, d)
