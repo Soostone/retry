@@ -1,3 +1,6 @@
+0.7.5.1
+* Improve haddocks for fullJitterBackoff.
+
 0.7.5.0
 * Add Semigroup instance when the Semigroup class is available through base.
 
