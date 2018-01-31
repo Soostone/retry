@@ -43,6 +43,7 @@ tests = testGroup "Control.Retry"
   , quadraticDelayTests
   , policyTransformersTests
   , maskingStateTests
+  , capDelayTests
   ]
 
 
@@ -243,6 +244,30 @@ maskingStateTests = testGroup "masking state"
 
 
 -------------------------------------------------------------------------------
+capDelayTests :: TestTree
+capDelayTests = testGroup "capDelay"
+  [ testProperty "respects limitRetries" $ property $ do
+      retries <- forAll (Gen.int (Range.linear 1 100))
+      cap <- forAll (Gen.int (Range.linear 1 maxBound))
+      let policy = capDelay cap (limitRetries retries)
+      let delays = runIdentity (simulatePolicy (retries + 1) policy)
+      let Just lastDelay = lookup (retries - 1) delays
+      let Just gaveUp = lookup retries delays
+      let noDelay = 0
+      lastDelay === Just noDelay
+      gaveUp === Nothing
+  , testProperty "does not allow any delays higher than the given delay" $ property $ do
+      cap <- forAll (Gen.int (Range.linear 1 maxBound))
+      baseDelay <- forAll (Gen.int (Range.linear 1 100))
+      basePolicy <- forAllWith (const "RetryPolicy") (pure (exponentialBackoff baseDelay) <|> pure (fibonacciBackoff baseDelay))
+      let policy = capDelay cap basePolicy
+      let delays = catMaybes (snd <$> runIdentity (simulatePolicy 100 policy))
+      let baddies = filter (> cap) delays
+      baddies === []
+  ]
+
+
+-------------------------------------------------------------------------------
 quadraticDelayTests :: TestTree
 quadraticDelayTests = testGroup "quadratic delay"
   [ testProperty "recovering test with quadratic retry delay" $ property $ do
@@ -278,6 +303,7 @@ instance Exception Custom1
 instance Exception Custom2
 
 
+-------------------------------------------------------------------------------
 genRetryStatus :: MonadGen m => m RetryStatus
 genRetryStatus = do
   n <- Gen.int (Range.linear 0 maxBound)
@@ -288,16 +314,10 @@ genRetryStatus = do
                               , rsPreviousDelay = l}
 
 
--- instance CoArbitrary RetryStatus where
---   coarbitrary (RetryStatus a b c) = variant 0 . coarbitrary (a, b, c)
+-------------------------------------------------------------------------------
 
 
--- instance Function RetryStatus where
---   function = functionMap (\rs -> (rsIterNumber rs, rsCumulativeDelay rs, rsPreviousDelay rs))
---                          (\(n, d, l) -> defaultRetryStatus { rsIterNumber = n
---                                                            , rsCumulativeDelay = d
---                                                            , rsPreviousDelay = l})
-
+-------------------------------------------------------------------------------
 -- | Create an action that will fail exactly N times with the given
 -- exception and will then return () in any subsequent calls.
 mkFailN :: (Exception e) => e -> Int -> IO (s -> IO ())
@@ -310,6 +330,7 @@ mkFailN e n = do
         False -> throwM e
 
 
+-------------------------------------------------------------------------------
 gatherStatuses
     :: MonadIO m
     => RetryPolicyM (WriterT [RetryStatus] m)
@@ -319,7 +340,7 @@ gatherStatuses policy = execWriterT $
                   (\rs -> tell [rs])
 
 
-
+-------------------------------------------------------------------------------
 -- | Just makes things a bit easier to follow instead of a magic value
 -- of @return True@
 shouldRetry :: Bool
