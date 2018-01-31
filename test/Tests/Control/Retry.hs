@@ -44,6 +44,7 @@ tests = testGroup "Control.Retry"
   , policyTransformersTests
   , maskingStateTests
   , capDelayTests
+  , limitRetriesByCumulativeDelayTests
   ]
 
 
@@ -259,13 +260,36 @@ capDelayTests = testGroup "capDelay"
   , testProperty "does not allow any delays higher than the given delay" $ property $ do
       cap <- forAll (Gen.int (Range.linear 1 maxBound))
       baseDelay <- forAll (Gen.int (Range.linear 1 100))
-      basePolicy <- forAllWith (const "RetryPolicy") (pure (exponentialBackoff baseDelay) <|> pure (fibonacciBackoff baseDelay))
+      basePolicy <- forAllWith (const "RetryPolicy") (genScalingPolicy baseDelay)
       let policy = capDelay cap basePolicy
       let delays = catMaybes (snd <$> runIdentity (simulatePolicy 100 policy))
       let baddies = filter (> cap) delays
       baddies === []
   ]
 
+
+-------------------------------------------------------------------------------
+-- | Generates policies that increase on each iteration
+genScalingPolicy :: (Alternative m) => Int -> m (RetryPolicyM Identity)
+genScalingPolicy baseDelay =
+  (pure (exponentialBackoff baseDelay) <|> pure (fibonacciBackoff baseDelay))
+
+
+-------------------------------------------------------------------------------
+limitRetriesByCumulativeDelayTests :: TestTree
+limitRetriesByCumulativeDelayTests = testGroup "limitRetriesByCumulativeDelay"
+  [ testProperty "never exceeds the given cumulative delay" $ property $ do
+      baseDelay <- forAll (Gen.int (Range.linear 1 100))
+      basePolicy <- forAllWith (const "RetryPolicy") (genScalingPolicy baseDelay)
+      cumulativeDelayMax <- forAll (Gen.int (Range.linear 1 10000))
+      let policy = limitRetriesByCumulativeDelay cumulativeDelayMax basePolicy
+      let delays = catMaybes (snd <$> runIdentity (simulatePolicy 100 policy))
+      footnoteShow delays
+      let actualCumulativeDelay = sum delays
+      footnote (show actualCumulativeDelay <> " <= " <> show cumulativeDelayMax)
+      HH.assert (actualCumulativeDelay <= cumulativeDelayMax)
+
+  ]
 
 -------------------------------------------------------------------------------
 quadraticDelayTests :: TestTree

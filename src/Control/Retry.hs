@@ -64,6 +64,7 @@ module Control.Retry
 
     -- * Policy Transformers
     , limitRetriesByDelay
+    , limitRetriesByCumulativeDelay
     , capDelay
 
     -- * Development Helpers
@@ -274,16 +275,37 @@ limitRetries i = retryPolicy $ \ RetryStatus { rsIterNumber = n} -> if n >= i th
 -------------------------------------------------------------------------------
 -- | Add an upperbound to a policy such that once the given time-delay
 -- amount *per try* has been reached or exceeded, the policy will stop
--- retrying and fail.
+-- retrying and fail. If you need to stop retrying once *cumulative*
+-- delay reaches a time-delay amount, use
+-- 'limitRetriesByCumulativeDelay'
 limitRetriesByDelay
-    :: Int
+    :: Monad m
+    => Int
     -- ^ Time-delay limit in microseconds.
-    -> RetryPolicy
-    -> RetryPolicy
+    -> RetryPolicyM m
+    -> RetryPolicyM m
 limitRetriesByDelay i p = RetryPolicyM $ \ n ->
     (>>= limit) `liftM` getRetryPolicyM p n
   where
     limit delay = if delay >= i then Nothing else Just delay
+
+
+-------------------------------------------------------------------------------
+-- | Add an upperbound to a policy such that once the cumulative delay
+-- over all retries has reached or exceeded the given limit, the
+-- policy will stop retrying and fail.
+limitRetriesByCumulativeDelay
+    :: Monad m
+    => Int
+    -- ^ Time-delay limit in microseconds.
+    -> RetryPolicyM m
+    -> RetryPolicyM m
+limitRetriesByCumulativeDelay cumulativeLimit p = RetryPolicyM $ \ stat ->
+  (>>= limit stat) `liftM` getRetryPolicyM p stat
+  where
+    limit status curDelay
+      | rsCumulativeDelay status `boundedPlus` curDelay > cumulativeLimit = Nothing
+      | otherwise = Just curDelay
 
 
 -------------------------------------------------------------------------------
