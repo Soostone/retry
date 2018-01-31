@@ -273,8 +273,8 @@ limitRetries i = retryPolicy $ \ RetryStatus { rsIterNumber = n} -> if n >= i th
 
 -------------------------------------------------------------------------------
 -- | Add an upperbound to a policy such that once the given time-delay
--- amount has been reached or exceeded, the policy will stop retrying
--- and fail.
+-- amount *per try* has been reached or exceeded, the policy will stop
+-- retrying and fail.
 limitRetriesByDelay
     :: Int
     -- ^ Time-delay limit in microseconds.
