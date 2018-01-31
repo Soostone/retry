@@ -1,3 +1,7 @@
+0.7.6.0
+* Clarify the semantics of `limitRetriesByDelay`.
+* Add `limitRetriesByCumulativeDelay`
+
 0.7.5.1
 * Improve haddocks for fullJitterBackoff.
 
