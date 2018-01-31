@@ -44,7 +44,7 @@ library
 
 test-suite test
     type:           exitcode-stdio-1.0
-    main-is:        main.hs
+    main-is:        Main.hs
     hs-source-dirs: test,src
     ghc-options:    -threaded
     build-depends:
@@ -54,9 +54,11 @@ test-suite test
       , data-default-class
       , random
       , time
-      , QuickCheck         >= 2.7 && < 2.11
-      , HUnit              >= 1.2.5.2 && < 1.7
-      , hspec              >= 1.9
+      , QuickCheck         >= 2.7
+      , HUnit              >= 1.2.5.2
+      , tasty
+      , tasty-hunit
+      , tasty-quickcheck
       , stm
       , ghc-prim
       , mtl
