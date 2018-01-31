@@ -73,7 +73,6 @@ module Control.Retry
 
 -------------------------------------------------------------------------------
 import           Control.Applicative
-import           Control.Arrow
 import           Control.Concurrent
 #if MIN_VERSION_base(4, 7, 0)
 import           Control.Exception (AsyncException, SomeAsyncException)
@@ -88,7 +87,6 @@ import           Control.Monad.Trans.Maybe
 import           Control.Monad.Trans.State
 import           Data.Default.Class
 import           Data.List (foldl')
-import           Data.Functor.Identity
 import           Data.Maybe
 import           GHC.Generics
 import           GHC.Prim
@@ -99,7 +97,7 @@ import           Data.Semigroup
 # else
 import           Data.Monoid
 # endif
-import           Prelude                hiding (catch)
+import           Prelude
 -------------------------------------------------------------------------------
 
 
@@ -442,8 +440,9 @@ recoverAll set f = recovering set handlers f
 -- 'AsyncException' and 'SomeAsyncException'. Append your handlers to
 -- this list as a convenient way to make sure you're not catching
 -- async exceptions like user interrupt.
-skipAsyncExceptions 
-    :: (MonadIO m, MonadMask m) 
+skipAsyncExceptions
+    :: ( MonadIO m
+       )
     => [RetryStatus -> Handler m Bool]
 skipAsyncExceptions = handlers
   where
@@ -557,7 +556,8 @@ stepping policy hs schedule f s = do
 -- | Helper function for constructing handler functions of the form required
 -- by 'recovering'.
 logRetries
-    :: (Monad m, Show e, Exception e)
+    :: ( Monad m
+       , Exception e)
     => (e -> m Bool)
     -- ^ Test for whether action is to be retried
     -> (Bool -> e -> RetryStatus -> m ())
@@ -572,12 +572,12 @@ logRetries test reporter status = Handler $ \ err -> do
     return result
 
 -- | For use with 'logRetries'.
-defaultLogMsg :: (Show e, Exception e) => Bool -> e -> RetryStatus -> String
+defaultLogMsg :: (Exception e) => Bool -> e -> RetryStatus -> String
 defaultLogMsg shouldRetry err status =
-    "[retry:" <> iter <> "] Encountered " <> show err <> ". " <> next
+    "[retry:" <> iter <> "] Encountered " <> show err <> ". " <> nextMsg
   where
     iter = show $ rsIterNumber status
-    next = if shouldRetry then "Retrying." else "Crashing."
+    nextMsg = if shouldRetry then "Retrying." else "Crashing."
 
 
 -------------------------------------------------------------------------------
@@ -602,8 +602,8 @@ simulatePolicy n (RetryPolicyM f) = flip evalStateT defaultRetryStatus $ forM [0
 simulatePolicyPP :: Int -> RetryPolicyM IO -> IO ()
 simulatePolicyPP n p = do
     ps <- simulatePolicy n p
-    forM_ ps $ \ (n, res) -> putStrLn $
-      show n <> ": " <> maybe "Inhibit" ppTime res
+    forM_ ps $ \ (iterNo, res) -> putStrLn $
+      show iterNo <> ": " <> maybe "Inhibit" ppTime res
     putStrLn $ "Total cumulative delay would be: " <>
       (ppTime $ boundedSum $ (mapMaybe snd) ps)
 
@@ -611,8 +611,8 @@ simulatePolicyPP n p = do
 -------------------------------------------------------------------------------
 ppTime :: (Integral a, Show a) => a -> String
 ppTime n | n < 1000 = show n <> "us"
-         | n < 1000000 = show (fromIntegral n / 1000) <> "ms"
-         | otherwise = show (fromIntegral n / 1000) <> "ms"
+         | n < 1000000 = show ((fromIntegral n / 1000) :: Double) <> "ms"
+         | otherwise = show ((fromIntegral n / 1000) :: Double) <> "ms"
 
 -------------------------------------------------------------------------------
 -- Bounded arithmetic

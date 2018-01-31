@@ -29,6 +29,10 @@ extra-source-files:
   README.md
   changelog.md
 
+flag lib-Werror
+  default: False
+  manual: True
+
 library
   exposed-modules:     Control.Retry
   build-depends:
@@ -41,12 +45,19 @@ library
   hs-source-dirs:      src
   default-language:    Haskell2010
 
+  if flag(lib-Werror)
+    ghc-options: -Werror
+
+  ghc-options: -Wall
+
 
 test-suite test
     type:           exitcode-stdio-1.0
     main-is:        Main.hs
     hs-source-dirs: test,src
     ghc-options:    -threaded
+    other-modules:  Control.Retry
+                    Tests.Control.Retry
     build-depends:
         base              ==4.*
       , exceptions
@@ -54,15 +65,20 @@ test-suite test
       , data-default-class
       , random
       , time
-      , QuickCheck         >= 2.7
       , HUnit              >= 1.2.5.2
       , tasty
       , tasty-hunit
-      , tasty-quickcheck
+      , tasty-hedgehog
+      , hedgehog
       , stm
       , ghc-prim
       , mtl
     default-language: Haskell2010
+
+    if flag(lib-Werror)
+      ghc-options: -Werror
+
+    ghc-options: -Wall
 
 source-repository head
   type:     git

@@ -7,8 +7,7 @@ module Tests.Control.Retry
 -------------------------------------------------------------------------------
 import           Control.Applicative
 import           Control.Concurrent
-import           Control.Concurrent.MVar
-import           Control.Concurrent.STM
+import           Control.Concurrent.STM      as STM
 import           Control.Exception           (AsyncException (..), IOException,
                                               MaskingState (..),
                                               getMaskingState, throwTo)
@@ -21,17 +20,16 @@ import           Data.Either
 import           Data.IORef
 import           Data.List
 import           Data.Maybe
-import           Data.Monoid
 import           Data.Time.Clock
 import           Data.Time.LocalTime         ()
 import           Data.Typeable
+import           Hedgehog                    as HH
+import qualified Hedgehog.Gen                as Gen
+import qualified Hedgehog.Range              as Range
 import           System.IO.Error
-import           Test.QuickCheck
-import           Test.QuickCheck.Function
-import           Test.QuickCheck.Monadic     as QCM
 import           Test.Tasty
-import           Test.Tasty.HUnit            (testCase, (@?=), assertBool)
-import           Test.Tasty.QuickCheck
+import           Test.Tasty.Hedgehog
+import           Test.Tasty.HUnit            (assertBool, testCase, (@?=))
 -------------------------------------------------------------------------------
 import           Control.Retry
 -------------------------------------------------------------------------------
@@ -43,34 +41,36 @@ tests = testGroup "Control.Retry"
   , monoidTests
   , retryStatusTests
   , quadraticDelayTests
+  , policyTransformersTests
+  , maskingStateTests
   ]
 
 
 -------------------------------------------------------------------------------
 recoveringTests :: TestTree
 recoveringTests = testGroup "recovering"
-  [ testProperty "recovering test without quadratic retry delay" $ monadicIO $ do
-      startTime <- run getCurrentTime
-      timeout <- pick . choose $ (0,15)
-      retries <- getSmall . getPositive <$> pick arbitrary
-      res <- run . try $ recovering
+  [ testProperty "recovering test without quadratic retry delay" $ property $ do
+      startTime <- liftIO getCurrentTime
+      timeout <- forAll (Gen.int (Range.linear 0 15))
+      retries <- forAll (Gen.int (Range.linear 0 50))
+      res <- liftIO $ try $ recovering
         (constantDelay timeout <> limitRetries retries)
         testHandlers
         (const $ throwM (userError "booo"))
-      endTime <- run getCurrentTime
-      QCM.assert (isLeftAnd isUserError res)
+      endTime <- liftIO getCurrentTime
+      HH.assert (isLeftAnd isUserError res)
       let ms' = (fromInteger . toInteger $ (timeout * retries)) / 1000000.0
-      QCM.assert (diffUTCTime endTime startTime >= ms')
+      HH.assert (diffUTCTime endTime startTime >= ms')
   , testGroup "exception hierarchy semantics"
       [ testCase "does not catch async exceptions" $ do
-          counter <- newTVarIO 0
+          counter <- newTVarIO (0 :: Int)
           done <- newEmptyMVar
           let work = atomically (modifyTVar' counter succ) >> threadDelay 1000000
 
           tid <- forkIO $
             recoverAll (limitRetries 2) (const work) `finally` putMVar done ()
 
-          atomically (check . (== 1) =<< readTVar counter)
+          atomically (STM.check . (== 1) =<< readTVar counter)
           throwTo tid UserInterrupt
 
           takeMVar done
@@ -149,31 +149,34 @@ recoveringTests = testGroup "recovering"
 -------------------------------------------------------------------------------
 monoidTests :: TestTree
 monoidTests = testGroup "Policy is a monoid"
-  [ testProperty "left identity" $
+  [ testProperty "left identity" $ property $
       propIdentity (\p -> mempty <> p) id
-  , testProperty "right identity" $
+  , testProperty "right identity" $ property $
       propIdentity (\p -> p <> mempty) id
-  , testProperty "associativity" $
+  , testProperty "associativity" $ property $
       propAssociativity (\x y z -> x <> (y <> z)) (\x y z -> (x <> y) <> z)
   ]
   where
-    toPolicy = retryPolicy . apply
-    propIdentity left right  =
-      property $ \a x ->
-        let applyPolicy f = getRetryPolicyM (f $ toPolicy a) x
-            validRes = maybe True (>= 0)
-        in  monadicIO $ do
-            l <- liftIO $ applyPolicy left
-            r <- liftIO $ applyPolicy right
-            if validRes r && validRes l
-              then assert (l == r)
-              else return ()
-    propAssociativity left right  =
-      property $ \a b c x ->
-        let applyPolicy f = liftIO $ getRetryPolicyM (f (toPolicy a) (toPolicy b) (toPolicy c)) x
-        in monadicIO $ do
-              res <- (==) <$> applyPolicy left <*> applyPolicy right
-              assert res
+    propIdentity left right  = do
+      retryStatus <- forAll genRetryStatus
+      fixedDelay <- forAll (Gen.maybe (Gen.int (Range.linear 0 maxBound)))
+      let calculateDelay _rs = fixedDelay
+      let applyPolicy' f = getRetryPolicyM (f $ retryPolicy calculateDelay) retryStatus
+          validRes = maybe True (>= 0)
+      l <- liftIO $ applyPolicy' left
+      r <- liftIO $ applyPolicy' right
+      if validRes r && validRes l
+        then l === r
+        else return ()
+    propAssociativity left right  = do
+      retryStatus <- forAll genRetryStatus
+      let genDelay = Gen.maybe (Gen.int (Range.linear 0 maxBound))
+      delayA <- forAll genDelay
+      delayB <- forAll genDelay
+      delayC <- forAll genDelay
+      let applyPolicy' f = liftIO $ getRetryPolicyM (f (retryPolicy (const delayA)) (retryPolicy (const delayB)) (retryPolicy (const delayC))) retryStatus
+      res <- liftIO (liftA2 (==) (applyPolicy' left) (applyPolicy' right))
+      assert res
 
 
 -------------------------------------------------------------------------------
@@ -191,19 +194,24 @@ retryStatusTests = testGroup "retry status"
 -------------------------------------------------------------------------------
 policyTransformersTests :: TestTree
 policyTransformersTests = testGroup "policy transformers"
-  [ testProperty "always produces positive delay with positive constants (no rollover)" $ \(Positive delay) ->
+  [ testProperty "always produces positive delay with positive constants (no rollover)" $ property $ do
+      delay <- forAll (Gen.int (Range.linear 0 maxBound))
       let res = runIdentity (simulatePolicy 1000 (exponentialBackoff delay))
           delays = catMaybes (snd <$> res)
           mnDelay = if null delays
                       then Nothing
                       else Just (minimum delays)
-      in case mnDelay of
-           Nothing -> property True
-           Just n -> counterexample (show n ++ " is not >= 0") (property (n >= 0))
-  , testProperty "exponential backoff is always incrementing" $ \(Positive delay) ->
+      case mnDelay of
+        Nothing -> return ()
+        Just n -> do
+          footnote (show n ++ " is not >= 0")
+          HH.assert (n >= 0)
+  , testProperty "positive, nonzero exponential backoff is always incrementing" $ property $ do
+     delay <- forAll (Gen.int (Range.linear 1 maxBound))
      let res = runIdentity (simulatePolicy 1000 (limitRetriesByDelay maxBound (exponentialBackoff delay)))
          delays = catMaybes (snd <$> res)
-     in sort delays === delays .&&. length (group delays) === length delays
+     sort delays === delays
+     length (group delays) === length delays
   ]
 
 
@@ -237,18 +245,19 @@ maskingStateTests = testGroup "masking state"
 -------------------------------------------------------------------------------
 quadraticDelayTests :: TestTree
 quadraticDelayTests = testGroup "quadratic delay"
-  [ testProperty "recovering test with quadratic retry delay" $ monadicIO $ do
-      startTime <- run getCurrentTime
-      timeout <- pick . choose $ (0,15)
-      retries <- pick . choose $ (0,8)
-      res <- run . try $ recovering (exponentialBackoff timeout <> limitRetries retries)
-                                [const $ Handler (\(_::SomeException) -> return True)]
-                                (const $ throwM (userError "booo"))
-      endTime <- run getCurrentTime
-      QCM.assert (isLeftAnd isUserError res)
+  [ testProperty "recovering test with quadratic retry delay" $ property $ do
+      startTime <- liftIO getCurrentTime
+      timeout <- forAll (Gen.int (Range.linear 0 15))
+      retries <- forAll (Gen.int (Range.linear 0 8))
+      res <- liftIO $ try $ recovering
+        (exponentialBackoff timeout <> limitRetries retries)
+        [const $ Handler (\(_::SomeException) -> return True)]
+        (const $ throwM (userError "booo"))
+      endTime <- liftIO getCurrentTime
+      HH.assert (isLeftAnd isUserError res)
       let tmo = if retries > 0 then timeout * 2 ^ (retries - 1) else 0
       let ms' = ((fromInteger . toInteger $ tmo) / 1000000.0)
-      QCM.assert (diffUTCTime endTime startTime >= ms')
+      HH.assert (diffUTCTime endTime startTime >= ms')
   ]
 
 -------------------------------------------------------------------------------
@@ -269,28 +278,29 @@ instance Exception Custom1
 instance Exception Custom2
 
 
-instance Arbitrary RetryStatus where
-  arbitrary = do
-    Positive n <- arbitrary
-    Positive d <- arbitrary
-    l <- arbitrary `suchThatMaybe` \(Positive n) -> n <= d
-    return (defaultRetryStatus { rsIterNumber = n
-                               , rsCumulativeDelay = d
-                               , rsPreviousDelay = getPositive <$> l})
-
-instance CoArbitrary RetryStatus where
-  coarbitrary (RetryStatus a b c) = variant 0 . coarbitrary (a, b, c)
+genRetryStatus :: MonadGen m => m RetryStatus
+genRetryStatus = do
+  n <- Gen.int (Range.linear 0 maxBound)
+  d <- Gen.int (Range.linear 0 maxBound)
+  l <- Gen.maybe (Gen.int (Range.linear 0 d))
+  return $ defaultRetryStatus { rsIterNumber = n
+                              , rsCumulativeDelay = d
+                              , rsPreviousDelay = l}
 
 
-instance Function RetryStatus where
-  function = functionMap (\rs -> (rsIterNumber rs, rsCumulativeDelay rs, rsPreviousDelay rs))
-                         (\(n, d, l) -> defaultRetryStatus { rsIterNumber = n
-                                                           , rsCumulativeDelay = d
-                                                           , rsPreviousDelay = l})
+-- instance CoArbitrary RetryStatus where
+--   coarbitrary (RetryStatus a b c) = variant 0 . coarbitrary (a, b, c)
+
+
+-- instance Function RetryStatus where
+--   function = functionMap (\rs -> (rsIterNumber rs, rsCumulativeDelay rs, rsPreviousDelay rs))
+--                          (\(n, d, l) -> defaultRetryStatus { rsIterNumber = n
+--                                                            , rsCumulativeDelay = d
+--                                                            , rsPreviousDelay = l})
 
 -- | Create an action that will fail exactly N times with the given
 -- exception and will then return () in any subsequent calls.
-mkFailN :: (Num a, Ord a, Exception e) => e -> a -> IO (s -> IO ())
+mkFailN :: (Exception e) => e -> Int -> IO (s -> IO ())
 mkFailN e n = do
     r <- newIORef 0
     return $ const $ do
