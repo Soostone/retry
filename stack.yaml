@@ -3,9 +3,7 @@ packages:
   - '.'
 extra-deps:
   - hedgehog-0.5.1
-  - tasty-hedgehog-0.1.0.1
-  # drop when tasty-hedgehog-0.1.0.2 is released https://github.com/qfpl/tasty-hedgehog/issues/6
-  - tasty-0.11.3
+  - tasty-hedgehog-0.1.0.2
 flags:
   retry:
     lib-Werror: true
