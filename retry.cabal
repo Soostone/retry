@@ -38,7 +38,7 @@ library
   build-depends:
       base                 >= 4.6 && < 5
     , data-default-class
-    , exceptions           >= 0.5 && < 0.9
+    , exceptions           >= 0.5 && < 0.10
     , ghc-prim             < 0.6
     , random               >= 1 && < 1.2
     , transformers         < 0.7
