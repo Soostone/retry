@@ -1,3 +1,6 @@
+0.7.6.1
+* Loosen bounds on exceptions.
+
 0.7.6.0
 * Clarify the semantics of `limitRetriesByDelay`.
 * Add `limitRetriesByCumulativeDelay`
