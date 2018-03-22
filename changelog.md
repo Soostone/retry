@@ -1,3 +1,6 @@
+0.7.6.2
+* Loosen bounds on exceptions again.
+
 0.7.6.1
 * Loosen bounds on exceptions.
 
