@@ -17,6 +17,7 @@ env:
 - ARGS="--resolver=lts-8"
 - ARGS="--resolver=lts-9"
 - ARGS="--resolver=lts-10"
+- ARGS="--resolver=lts-11"
 - ARGS="--resolver=nightly"
 
 before_install:

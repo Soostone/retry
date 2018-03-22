@@ -1,9 +1,9 @@
-resolver: lts-10.4
+resolver: lts-11.1
 packages:
   - '.'
 extra-deps:
-  - hedgehog-0.5.1
-  - tasty-hedgehog-0.1.0.2
+  - hedgehog-0.5.3
+  - tasty-hedgehog-0.2.0.0
 flags:
   retry:
     lib-Werror: true
