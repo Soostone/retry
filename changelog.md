@@ -1,3 +1,6 @@
+0.7.6.3
+* Documentation fix on `recoverAll`
+
 0.7.6.2
 * Loosen bounds on exceptions again.
 
