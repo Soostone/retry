@@ -428,7 +428,7 @@ retrying policy chk f = go defaultRetryStatus
 -- good idea to catch async exceptions as it can result in hanging
 -- threads and programs. Note that if you just throw an exception to
 -- this thread that does not descend from SomeException, recoverAll
--- will catch it.
+-- will not catch it.
 --
 -- See how the action below is run once and retried 5 more times
 -- before finally failing for good:
