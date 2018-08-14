@@ -88,7 +88,6 @@ recoveringTests = testGroup "recovering"
             f
           (res :: Either Custom1 ()) @?= Right ()
 
-
       , testCase "fails beyond policy using custom exceptions" $ do
           f <- mkFailN Custom1 3
           res <- try $ recovering
@@ -97,6 +96,12 @@ recoveringTests = testGroup "recovering"
             f
           (res :: Either Custom1 ()) @?= Left Custom1
 
+      , testCase "recoverAll won't catch exceptions which are not decendants of SomeException" $ do
+          f <- mkFailN Custom1 4
+          res <- try $ recoverAll
+            (constantDelay 5000 <> limitRetries 3)
+            f
+          (res :: Either Custom1 ()) @?= Left Custom1
 
       , testCase "does not recover from unhandled exceptions" $ do
           f <- mkFailN Custom2 2
