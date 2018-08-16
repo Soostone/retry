@@ -35,6 +35,7 @@ module Control.Retry
       RetryPolicyM (..)
     , RetryPolicy
     , retryPolicy
+    , natTransformRetryPolicy
     , RetryStatus (..)
     , defaultRetryStatus
     , applyPolicy
@@ -174,6 +175,21 @@ instance Monad m => Monoid (RetryPolicyM m) where
       b' <- MaybeT $ b n
       return $! max a' b'
 #endif
+
+
+-------------------------------------------------------------------------------
+-- | Applies a natural transformation to a policy to run a RetryPolicy
+-- meant for the monad @m@ in the monad @n@ provided a transformation
+-- from @m@ to @n@ is available. A common case is if you have a pure
+-- policy, @RetryPolicyM Identity@ and want to use it to govern an
+-- @IO@ computation you could write:
+--
+-- @
+--   purePolicyInIO :: RetryPolicyM Identity -> RetryPolicyM IO
+--   purePolicyInIO = natTransformRetryPolicy (pure . runIdentity)
+-- @
+natTransformRetryPolicy :: (forall a. m a -> n a) -> RetryPolicyM m -> RetryPolicyM n
+natTransformRetryPolicy f (RetryPolicyM p) = RetryPolicyM $ \stat -> f (p stat)
 
 
 -------------------------------------------------------------------------------

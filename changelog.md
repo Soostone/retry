@@ -1,3 +1,6 @@
+0.7.7.0
+* Add `natTransformRetryPolicy`
+
 0.7.6.3
 * Documentation fix on `recoverAll`
 
