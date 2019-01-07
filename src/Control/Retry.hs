@@ -35,6 +35,7 @@ module Control.Retry
       RetryPolicyM (..)
     , RetryPolicy
     , retryPolicy
+    , retryPolicyDefault
     , natTransformRetryPolicy
     , RetryStatus (..)
     , defaultRetryStatus
@@ -87,7 +88,6 @@ import           Control.Monad.IO.Class
 import           Control.Monad.Trans.Class
 import           Control.Monad.Trans.Maybe
 import           Control.Monad.Trans.State
-import           Data.Default.Class
 import           Data.List (foldl')
 import           Data.Maybe
 import           GHC.Generics
@@ -148,9 +148,9 @@ newtype RetryPolicyM m = RetryPolicyM { getRetryPolicyM :: RetryStatus -> m (May
 -- type signatures pre-0.7.
 type RetryPolicy = forall m . Monad m => RetryPolicyM m
 
-
-instance Monad m => Default (RetryPolicyM m) where
-    def = constantDelay 50000 <> limitRetries 5
+-- | Default retry policy
+retryPolicyDefault :: RetryPolicy
+retryPolicyDefault = constantDelay 50000 <> limitRetries 5
 
 
 -- Base 4.9.0 adds a Data.Semigroup module. This has fewer
@@ -427,13 +427,13 @@ retrying policy chk f = go defaultRetryStatus
     go s = do
         res <- f s
         chk' <- chk s res
-        case chk' of
-          True -> do
+        if chk'
+          then do
             rs <- applyAndDelay policy s
             case rs of
               Nothing -> return res
               Just rs' -> go $! rs'
-          False -> return res
+          else return res
 
 
 -------------------------------------------------------------------------------
