@@ -37,7 +37,6 @@ library
   exposed-modules:     Control.Retry
   build-depends:
       base                 >= 4.6 && < 5
-    , data-default-class
     , exceptions           >= 0.5 && < 0.11
     , ghc-prim             < 0.6
     , random               >= 1 && < 1.2
@@ -62,7 +61,6 @@ test-suite test
         base              ==4.*
       , exceptions
       , transformers
-      , data-default-class
       , random
       , time
       , HUnit              >= 1.2.5.2
