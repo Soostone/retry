@@ -1,3 +1,6 @@
+0.7.8.0
+* Remove dependency on data-default-class 	
+
 0.7.7.0
 * Add `natTransformRetryPolicy`
 

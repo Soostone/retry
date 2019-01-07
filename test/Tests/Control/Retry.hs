@@ -15,7 +15,6 @@ import           Control.Monad.Catch
 import           Control.Monad.Identity
 import           Control.Monad.IO.Class
 import           Control.Monad.Writer.Strict
-import           Data.Default.Class          (def)
 import           Data.Either
 import           Data.IORef
 import           Data.List
@@ -227,7 +226,7 @@ maskingStateTests :: TestTree
 maskingStateTests = testGroup "masking state"
   [ testCase "shouldn't change masking state in a recovered action" $ do
       maskingState <- getMaskingState
-      final <- try $ recovering def testHandlers $ const $ do
+      final <- try $ recovering retryPolicyDefault testHandlers $ const $ do
         maskingState' <- getMaskingState
         maskingState' @?= maskingState
         fail "Retrying..."
@@ -242,7 +241,7 @@ maskingStateTests = testGroup "masking state"
                 maskingState @?= MaskedInterruptible
                 return shouldRetry
             ]
-      final <- try $ recovering def checkMaskingStateHandlers $ const $ fail "Retrying..."
+      final <- try $ recovering retryPolicyDefault checkMaskingStateHandlers $ const $ fail "Retrying..."
       assertBool
         ("Expected IOException but didn't get one")
         (isLeft (final :: Either IOException ()))
