@@ -1,8 +1,7 @@
-resolver: lts-11.1
+resolver: lts-13.2
 packages:
   - '.'
 extra-deps:
-  - hedgehog-0.5.3
   - tasty-hedgehog-0.2.0.0
 flags:
   retry:
