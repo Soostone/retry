@@ -1,3 +1,6 @@
+0.8.0.1
+* Loosen upper bounds
+
 0.8.0.0
 * Remove dependency on data-default-class
 
