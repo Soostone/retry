@@ -1,3 +1,6 @@
+0.8.0.2
+* Update docs for default retry policy. [PR 64](https://github.com/Soostone/retry/pull/64)
+
 0.8.0.1
 * Loosen upper bounds
 
