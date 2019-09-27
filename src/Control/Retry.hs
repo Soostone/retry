@@ -131,9 +131,9 @@ import           Prelude
 -- Naturally, 'mempty' will retry immediately (delay 0) for an
 -- unlimited number of retries, forming the identity for the 'Monoid'.
 --
--- The default under 'def' implements a constant 50ms delay, up to 5 times:
+-- The default retry policy 'retryPolicyDefault' implements a constant 50ms delay, up to 5 times:
 --
--- >> def = constantDelay 50000 <> limitRetries 5
+-- >> retryPolicyDefault = constantDelay 50000 <> limitRetries 5
 --
 -- For anything more complex, just define your own 'RetryPolicyM':
 --
@@ -403,7 +403,7 @@ capDelay limit p = RetryPolicyM $ \ n ->
 --
 -- >>> import Data.Maybe
 -- >>> let f _ = putStrLn "Running action" >> return Nothing
--- >>> retrying def (const $ return . isNothing) f
+-- >>> retrying retryPolicyDefault (const $ return . isNothing) f
 -- Running action
 -- Running action
 -- Running action
@@ -450,7 +450,7 @@ retrying policy chk f = go defaultRetryStatus
 -- before finally failing for good:
 --
 -- >>> let f _ = putStrLn "Running action" >> error "this is an error"
--- >>> recoverAll def f
+-- >>> recoverAll retryPolicyDefault f
 -- Running action
 -- Running action
 -- Running action
@@ -509,7 +509,7 @@ recovering
     :: (MonadIO m, MonadCatch m)
 #endif
     => RetryPolicyM m
-    -- ^ Just use 'def' for default settings
+    -- ^ Just use 'retryPolicyDefault' for default settings
     -> [(RetryStatus -> Handler m Bool)]
     -- ^ Should a given exception be retried? Action will be
     -- retried if this returns True *and* the policy allows it.
@@ -555,7 +555,7 @@ stepping
     :: (MonadIO m, MonadCatch m)
 #endif
     => RetryPolicyM m
-    -- ^ Just use 'def' for default settings
+    -- ^ Just use 'retryPolicyDefault' for default settings
     -> [(RetryStatus -> Handler m Bool)]
     -- ^ Should a given exception be retried? Action will be
     -- retried if this returns True *and* the policy allows it.
@@ -725,7 +725,7 @@ lens sa sbt afb s = sbt s <$> afb (sa s)
 -- instance Exception AnotherException
 
 
--- test = retrying def [h1,h2] f
+-- test = retrying retryPolicyDefault [h1,h2] f
 --     where
 --       f = putStrLn "Running action" >> throwM AnotherException
 --       h1 = Handler $ \ (e :: TestException) -> return False
