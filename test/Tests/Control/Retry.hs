@@ -8,9 +8,7 @@ module Tests.Control.Retry
 import           Control.Applicative
 import           Control.Concurrent
 import           Control.Concurrent.STM      as STM
-import           Control.Exception           (AsyncException (..), IOException,
-                                              MaskingState (..),
-                                              getMaskingState, throwTo)
+import qualified Control.Exception           as EX
 import           Control.Monad.Catch
 import           Control.Monad.Identity
 import           Control.Monad.IO.Class
@@ -72,7 +70,7 @@ recoveringTests = testGroup "recovering"
             recoverAll (limitRetries 2) (const work) `finally` putMVar done ()
 
           atomically (STM.check . (== 1) =<< readTVar counter)
-          throwTo tid UserInterrupt
+          EX.throwTo tid EX.UserInterrupt
 
           takeMVar done
 
@@ -225,26 +223,26 @@ policyTransformersTests = testGroup "policy transformers"
 maskingStateTests :: TestTree
 maskingStateTests = testGroup "masking state"
   [ testCase "shouldn't change masking state in a recovered action" $ do
-      maskingState <- getMaskingState
+      maskingState <- EX.getMaskingState
       final <- try $ recovering retryPolicyDefault testHandlers $ const $ do
-        maskingState' <- getMaskingState
+        maskingState' <- EX.getMaskingState
         maskingState' @?= maskingState
         fail "Retrying..."
       assertBool
-        ("Expected IOException but didn't get one")
-        (isLeft (final :: Either IOException ()))
+        ("Expected EX.IOException but didn't get one")
+        (isLeft (final :: Either EX.IOException ()))
 
   , testCase "should mask asynchronous exceptions in exception handlers" $ do
       let checkMaskingStateHandlers =
             [ const $ Handler $ \(_ :: SomeException) -> do
-                maskingState <- getMaskingState
-                maskingState @?= MaskedInterruptible
+                maskingState <- EX.getMaskingState
+                maskingState @?= EX.MaskedInterruptible
                 return shouldRetry
             ]
       final <- try $ recovering retryPolicyDefault checkMaskingStateHandlers $ const $ fail "Retrying..."
       assertBool
-        ("Expected IOException but didn't get one")
-        (isLeft (final :: Either IOException ()))
+        ("Expected EX.IOException but didn't get one")
+        (isLeft (final :: Either EX.IOException ()))
   ]
 
 
