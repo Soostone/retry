@@ -7,3 +7,4 @@ cabal-dev
 *.swp
 TAGS
 .stack-work
+stack.yaml.lock
