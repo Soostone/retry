@@ -1,3 +1,6 @@
+0.8.1.0
+* Add `retryingDynamic` and `recoveringDynamic`. [PR 65](https://github.com/Soostone/retry/pull/65)
+
 0.8.0.2
 * Update docs for default retry policy. [PR 64](https://github.com/Soostone/retry/pull/64)
 
