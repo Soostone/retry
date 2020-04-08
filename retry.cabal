@@ -38,7 +38,7 @@ library
   build-depends:
       base                 >= 4.6 && < 5
     , exceptions           >= 0.5
-    , ghc-prim             < 0.6
+    , ghc-prim
     , random               >= 1
     , transformers
   hs-source-dirs:      src
