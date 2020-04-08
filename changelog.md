@@ -1,3 +1,6 @@
+0.8.1.1
+* Loosen upper bounds
+
 0.8.1.0
 * Add `retryingDynamic` and `recoveringDynamic`. [PR 65](https://github.com/Soostone/retry/pull/65)
 
