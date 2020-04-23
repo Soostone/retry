@@ -36,7 +36,7 @@ flag lib-Werror
 library
   exposed-modules:     Control.Retry
   build-depends:
-      base                 >= 4.6 && < 5
+      base                 >= 4.8 && < 5
     , exceptions           >= 0.5
     , ghc-prim
     , random               >= 1
