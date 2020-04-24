@@ -12,11 +12,17 @@ addons:
 
 # The different configurations we want to test. You could also do things like
 # change flags or use --stack-yaml to point to a different file.
-env:
-- ARGS="--resolver=lts-12"
-- ARGS="--resolver=lts-13"
-- ARGS="--resolver=lts-14"
-- ARGS="--resolver=nightly"
+matrix:
+  include:
+    env:
+    - ARGS="--resolver=lts-12"
+    - ARGS="--resolver=lts-13"
+    - ARGS="--resolver=lts-14"
+    # latest LTS at the time
+    - ARGS="--resolver=lts"
+    - ARGS="--resolver=nightly"
+  allowed_failures:
+    - ARGS="--resolver=nightly"
 
 before_install:
 # Download and unpack the stack executable
