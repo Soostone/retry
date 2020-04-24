@@ -1,3 +1,6 @@
+0.8.1.2
+* Set lower bound on base to >= 4.8
+
 0.8.1.1
 * Loosen upper bounds
 

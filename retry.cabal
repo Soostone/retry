@@ -14,7 +14,7 @@ description:
         case we should hang back for a bit and retry the query instead
         of simply raising an exception.
 
-version:             0.8.1.1
+version:             0.8.1.2
 synopsis:            Retry combinators for monadic actions that may fail
 license:             BSD3
 license-file:        LICENSE
