@@ -130,7 +130,7 @@ import           Prelude
 -- One can easily define an exponential backoff policy with a limited
 -- number of retries:
 --
--- >> limitedBackoff = exponentialBackoff 50 <> limitRetries 5
+-- >> limitedBackoff = exponentialBackoff 50000 <> limitRetries 5
 --
 -- Naturally, 'mempty' will retry immediately (delay 0) for an
 -- unlimited number of retries, forming the identity for the 'Monoid'.
