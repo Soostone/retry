@@ -141,7 +141,7 @@ import           Prelude
 --
 -- For anything more complex, just define your own 'RetryPolicyM':
 --
--- >> myPolicy = retryPolicy $ \ rs -> if rsIterNumber n > 10 then Just 1000 else Just 10000
+-- >> myPolicy = retryPolicy $ \ rs -> if rsIterNumber rs > 10 then Just 1000 else Just 10000
 --
 -- Since 0.7.
 newtype RetryPolicyM m = RetryPolicyM { getRetryPolicyM :: RetryStatus -> m (Maybe Int) }
