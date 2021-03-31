@@ -15,9 +15,9 @@ addons:
 matrix:
   include:
     env:
-    - ARGS="--resolver=lts-12"
-    - ARGS="--resolver=lts-13"
-    - ARGS="--resolver=lts-14"
+    - ARGS="--resolver=lts-15"
+    - ARGS="--resolver=lts-16"
+    - ARGS="--resolver=lts-17"
     # latest LTS at the time
     - ARGS="--resolver=lts"
     - ARGS="--resolver=nightly"
