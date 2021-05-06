@@ -161,23 +161,18 @@ retryPolicyDefault = constantDelay 50000 <> limitRetries 5
 -- dependencies than the semigroups package, so we're using base's
 -- only if its available.
 # if MIN_VERSION_base(4, 9, 0)
-instance Monad m => Semigroup (RetryPolicyM m) where
-  (RetryPolicyM a) <> (RetryPolicyM b) = RetryPolicyM $ \ n -> runMaybeT $ do
-    a' <- MaybeT $ a n
-    b' <- MaybeT $ b n
-    return $! max a' b'
+instance Applicative m => Semigroup (RetryPolicyM m)
+  where
+  RetryPolicyM a <> RetryPolicyM b = RetryPolicyM $ liftA2 (liftA2 (liftA2 max)) a b
 
-
-instance Monad m => Monoid (RetryPolicyM m) where
-    mempty = retryPolicy $ const (Just 0)
-    mappend = (<>)
+instance Applicative m => Monoid (RetryPolicyM m)
+  where
+  mempty = RetryPolicyM $ pure $ pure $ pure 0
 # else
-instance Monad m => Monoid (RetryPolicyM m) where
-    mempty = retryPolicy $ const (Just 0)
-    (RetryPolicyM a) `mappend` (RetryPolicyM b) = RetryPolicyM $ \ n -> runMaybeT $ do
-      a' <- MaybeT $ a n
-      b' <- MaybeT $ b n
-      return $! max a' b'
+instance Applicative m => Monoid (RetryPolicyM m)
+  where
+  RetryPolicyM a <> RetryPolicyM b = RetryPolicyM $ liftA2 (liftA2 (liftA2 max)) a b
+  mempty = RetryPolicyM $ pure $ pure $ pure 0
 #endif
 
 
