@@ -1,3 +1,7 @@
+0.9.0.0
+* Replace several uses of RetryPolicy type alias with RetryPolicyM m for better
+  GHC 9 compat.
+
 0.8.1.2
 * Set lower bound on base to >= 4.8
 

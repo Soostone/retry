@@ -400,7 +400,7 @@ genRetryStatus = do
 -------------------------------------------------------------------------------
 -- | Generate an arbitrary 'RetryPolicy' without any limits applied.
 genPolicyNoLimit
-    :: (MonadGen mg, MonadIO mr)
+    :: forall mg mr. (MonadGen mg, MonadIO mr)
     => Range Int
     -> mg (RetryPolicyM mr)
 genPolicyNoLimit durationRange =
