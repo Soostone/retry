@@ -3,7 +3,6 @@
 {-# LANGUAGE DeriveGeneric         #-}
 {-# LANGUAGE MagicHash             #-}
 {-# LANGUAGE RankNTypes            #-}
-{-# LANGUAGE RecordWildCards       #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE UnboxedTuples         #-}
 {-# LANGUAGE ViewPatterns          #-}
@@ -221,15 +220,7 @@ toRetryAction False = DontRetry
 toRetryAction True = ConsultPolicy
 
 -------------------------------------------------------------------------------
--- | Datatype with stats about retries made thus far. The constructor
--- is deliberately not exported to make additional fields easier to
--- add in a backward-compatible manner. To read or modify fields in
--- RetryStatus, use the accessors or lenses below. Note that if you
--- don't want to use lenses, the exported field names can be used for
--- updates:
---
--- >> retryStatus { rsIterNumber = newIterNumber }
--- >> retryStatus & rsIterNumberL .~ newIterNumber
+-- | Datatype with stats about retries made thus far.
 data RetryStatus = RetryStatus
     { rsIterNumber      :: !Int -- ^ Iteration number, where 0 is the first try
     , rsCumulativeDelay :: !Int -- ^ Delay incurred so far from retries in microseconds
@@ -292,7 +283,7 @@ applyAndDelay policy s = do
     chk <- applyPolicy policy s
     case chk of
       Just rs -> do
-        case (rsPreviousDelay rs) of
+        case rsPreviousDelay rs of
           Nothing -> return ()
           Just delay -> liftIO $ threadDelay delay
         return (Just rs)
@@ -313,7 +304,7 @@ limitRetries
     :: Int
     -- ^ Maximum number of retries.
     -> RetryPolicy
-limitRetries i = retryPolicy $ \ RetryStatus { rsIterNumber = n} -> if n >= i then Nothing else (Just 0)
+limitRetries i = retryPolicy $ \ RetryStatus { rsIterNumber = n} -> if n >= i then Nothing else Just 0
 
 
 -------------------------------------------------------------------------------
@@ -329,7 +320,7 @@ limitRetriesByDelay
     -> RetryPolicyM m
     -> RetryPolicyM m
 limitRetriesByDelay i p = RetryPolicyM $ \ n ->
-    (>>= limit) `liftM` getRetryPolicyM p n
+    (>>= limit) `fmap` getRetryPolicyM p n
   where
     limit delay = if delay >= i then Nothing else Just delay
 
@@ -345,7 +336,7 @@ limitRetriesByCumulativeDelay
     -> RetryPolicyM m
     -> RetryPolicyM m
 limitRetriesByCumulativeDelay cumulativeLimit p = RetryPolicyM $ \ stat ->
-  (>>= limit stat) `liftM` getRetryPolicyM p stat
+  (>>= limit stat) `fmap` getRetryPolicyM p stat
   where
     limit status curDelay
       | rsCumulativeDelay status `boundedPlus` curDelay > cumulativeLimit = Nothing
@@ -421,7 +412,7 @@ capDelay
     -> RetryPolicyM m
     -> RetryPolicyM m
 capDelay limit p = RetryPolicyM $ \ n ->
-  (fmap (min limit)) `liftM` (getRetryPolicyM p) n
+  fmap (min limit) `fmap` getRetryPolicyM p n
 
 
 -------------------------------------------------------------------------------
@@ -569,7 +560,7 @@ skipAsyncExceptions = handlers
 -- *earlier* in the list of handlers to reject 'AsyncException' and
 -- 'SomeAsyncException', as catching these can cause thread and
 -- program hangs. 'recoverAll' already does this for you so if you
--- just plan on catching 'SomeException', you may as well ues
+-- just plan on catching 'SomeException', you may as well use
 -- 'recoverAll'
 recovering
 #if MIN_VERSION_exceptions(0, 6, 0)
@@ -579,7 +570,7 @@ recovering
 #endif
     => RetryPolicyM m
     -- ^ Just use 'retryPolicyDefault' for default settings
-    -> [(RetryStatus -> Handler m Bool)]
+    -> [RetryStatus -> Handler m Bool]
     -- ^ Should a given exception be retried? Action will be
     -- retried if this returns True *and* the policy allows it.
     -- This action will be consulted first even if the policy
@@ -602,7 +593,7 @@ recoveringDynamic
 #endif
     => RetryPolicyM m
     -- ^ Just use 'retryPolicyDefault' for default settings
-    -> [(RetryStatus -> Handler m RetryAction)]
+    -> [RetryStatus -> Handler m RetryAction]
     -- ^ Should a given exception be retried? Action will be
     -- retried if this returns either 'ConsultPolicy' or
     -- 'ConsultPolicyOverrideDelay' *and* the policy allows it.
@@ -652,7 +643,7 @@ stepping
 #endif
     => RetryPolicyM m
     -- ^ Just use 'retryPolicyDefault' for default settings
-    -> [(RetryStatus -> Handler m Bool)]
+    -> [RetryStatus -> Handler m Bool]
     -- ^ Should a given exception be retried? Action will be
     -- retried if this returns True *and* the policy allows it.
     -- This action will be consulted first even if the policy
@@ -739,7 +730,7 @@ simulatePolicyPP n p = do
     forM_ ps $ \ (iterNo, res) -> putStrLn $
       show iterNo <> ": " <> maybe "Inhibit" ppTime res
     putStrLn $ "Total cumulative delay would be: " <>
-      (ppTime $ boundedSum $ (mapMaybe snd) ps)
+      ppTime (boundedSum $ mapMaybe snd ps)
 
 
 -------------------------------------------------------------------------------
