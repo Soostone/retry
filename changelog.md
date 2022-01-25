@@ -1,3 +1,11 @@
+0.9.1.0
+* Add resumable retry/recover variants:
+  * `resumeRetrying`
+  * `resumeRetryingDynamic`
+  * `resumeRecovering`
+  * `resumeRecoveringDynamic`
+  * `resumeRecoverAll`
+
 0.9.0.0
 * Replace several uses of RetryPolicy type alias with RetryPolicyM m for better
   GHC 9 compat.

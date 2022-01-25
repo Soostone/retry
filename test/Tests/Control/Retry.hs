@@ -1,5 +1,6 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 {-# LANGUAGE DeriveDataTypeable  #-}
+{-# LANGUAGE LambdaCase  #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 module Tests.Control.Retry
     ( tests
@@ -27,7 +28,9 @@ import qualified Hedgehog.Range              as Range
 import           System.IO.Error
 import           Test.Tasty
 import           Test.Tasty.Hedgehog
-import           Test.Tasty.HUnit            (assertBool, testCase, (@?=))
+import           Test.Tasty.HUnit            ( assertBool, assertFailure
+                                             , testCase, (@=?), (@?=)
+                                             )
 -------------------------------------------------------------------------------
 import           Control.Retry
 -------------------------------------------------------------------------------
@@ -44,6 +47,7 @@ tests = testGroup "Control.Retry"
   , capDelayTests
   , limitRetriesByCumulativeDelayTests
   , overridingDelayTests
+  , resumableTests
   ]
 
 
@@ -355,14 +359,123 @@ overridingDelayTests = testGroup "overriding delay"
       forM_ (zip (diffTimes measuredTimestamps) expectedDelays) $
         \(actual, expected) -> diff actual (>=) expected
 
+
+-------------------------------------------------------------------------------
+resumableTests :: TestTree
+resumableTests = testGroup "resumable"
+  [ testGroup "resumeRetrying"
+      [ testCase "can resume" $ do
+          retryingTest resumeRetrying (\_ _ -> pure shouldRetry)
+      ]
+  , testGroup "resumeRetryingDynamic"
+      [ testCase "can resume" $ do
+          retryingTest resumeRetryingDynamic (\_ _ -> pure $ ConsultPolicy)
+      ]
+  , testGroup "resumeRecovering"
+      [ testCase "can resume" $ do
+          recoveringTest resumeRecovering testHandlers
+      ]
+  , testGroup "resumeRecoveringDynamic"
+      [ testCase "can resume" $ do
+          recoveringTest resumeRecoveringDynamic testHandlersDynamic
+      ]
+  , testGroup "resumeRecoverAll"
+      [ testCase "can resume" $ do
+          recoveringTest
+            (\status policy () action -> resumeRecoverAll status policy action)
+            ()
+      ]
+  ]
+  where
+    retryingTest
+      :: (RetryStatus -> RetryPolicyM IO -> p -> (RetryStatus -> IO ()) -> IO ())
+      -> p
+      -> IO ()
+    retryingTest resumableOp isRetryNeeded = do
+      counterRef <- newIORef (0 :: Int)
+
+      let go policy status = do
+            atomicWriteIORef counterRef 0
+            resumableOp
+              status
+              policy
+              isRetryNeeded
+              (const $ atomicModifyIORef' counterRef $ \n -> (1 + n, ()))
+
+      let policy = limitRetries 2
+      let nextStatus = nextStatusUsingPolicy policy
+
+      go policy defaultRetryStatus
+      (3 @=?) =<< readIORef counterRef
+
+      go policy =<< nextStatus defaultRetryStatus
+      (2 @=?) =<< readIORef counterRef
+
+      go policy =<< nextStatus =<< nextStatus defaultRetryStatus
+      (1 @=?) =<< readIORef counterRef
+
+    recoveringTest
+      :: (RetryStatus -> RetryPolicyM IO -> handlers -> (RetryStatus -> IO ()) -> IO ())
+      -> handlers
+      -> IO ()
+    recoveringTest resumableOp handlers = do
+      counterRef <- newIORef (0 :: Int)
+
+      let go policy status = do
+            action <- do
+              mkFailUntilIO
+                (\_ -> atomicModifyIORef' counterRef $ \n -> (1 + n, False))
+                Custom1
+            try $ resumableOp status policy handlers action
+
+      let policy = limitRetries 2
+      let nextStatus = nextStatusUsingPolicy policy
+
+      do
+        atomicWriteIORef counterRef 0
+        res <- go policy defaultRetryStatus
+        res @?= Left Custom1
+        (3 @=?) =<< readIORef counterRef
+
+      do
+        atomicWriteIORef counterRef 0
+        res <- go policy =<< nextStatus defaultRetryStatus
+        res @?= Left Custom1
+        (2 @=?) =<< readIORef counterRef
+
+      do
+        atomicWriteIORef counterRef 0
+        res <- go policy =<< nextStatus =<< nextStatus defaultRetryStatus
+        res @?= Left Custom1
+        (1 @=?) =<< readIORef counterRef
+
+
+-------------------------------------------------------------------------------
+nextStatusUsingPolicy :: RetryPolicyM IO -> RetryStatus -> IO RetryStatus
+nextStatusUsingPolicy policy status = do
+  applyPolicy policy status >>= \case
+    Nothing -> do
+      assertFailure "applying policy produced no new status"
+    Just status' -> do
+      pure status'
+
+
 -------------------------------------------------------------------------------
 isLeftAnd :: (a -> Bool) -> Either a b -> Bool
 isLeftAnd f ei = case ei of
   Left v -> f v
   _      -> False
 
+
+-------------------------------------------------------------------------------
 testHandlers :: [a -> Handler IO Bool]
 testHandlers = [const $ Handler (\(_::SomeException) -> return shouldRetry)]
+
+
+-------------------------------------------------------------------------------
+testHandlersDynamic :: [a -> Handler IO RetryAction]
+testHandlersDynamic =
+  [const $ Handler (\(_::SomeException) -> return ConsultPolicy)]
 
 -- | Apply a function to adjacent list items.
 --
@@ -427,11 +540,33 @@ instance Show (RetryPolicyM m) where
 -- | Create an action that will fail exactly N times with the given
 -- exception and will then return () in any subsequent calls.
 mkFailN :: (Exception e) => e -> Int -> IO (s -> IO ())
-mkFailN e n = do
+mkFailN e n = mkFailUntil (\iter -> iter >= n) e
+
+
+-------------------------------------------------------------------------------
+-- | Create an action that will fail with the given exception until the given
+-- iteration predicate returns 'True', at which point the action will return
+-- '()' in any subsequent calls.
+mkFailUntil
+    :: (Exception e)
+    => (Int -> Bool)
+    -> e
+    -> IO (s -> IO ())
+mkFailUntil p = mkFailUntilIO (pure . p)
+
+
+-------------------------------------------------------------------------------
+-- | The same as 'mkFailUntil' but allows doing IO in the predicate.
+mkFailUntilIO
+    :: (Exception e)
+    => (Int -> IO Bool)
+    -> e
+    -> IO (s -> IO ())
+mkFailUntilIO p e = do
     r <- newIORef 0
     return $ const $ do
       old <- atomicModifyIORef' r $ \ old -> (old+1, old)
-      case old >= n of
+      p old >>= \case
         True  -> return ()
         False -> throwM e
 
