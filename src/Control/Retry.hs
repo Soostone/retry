@@ -59,6 +59,12 @@ module Control.Retry
     , skipAsyncExceptions
     , logRetries
     , defaultLogMsg
+    -- ** Resumable variants
+    , resumeRetrying
+    , resumeRetryingDynamic
+    , resumeRecovering
+    , resumeRecoveringDynamic
+    , resumeRecoverAll
 
     -- * Retry Policies
     , constantDelay
@@ -229,8 +235,7 @@ data RetryStatus = RetryStatus
 
 
 -------------------------------------------------------------------------------
--- | Initial, default retry status. Exported mostly to allow user code
--- to test their handlers and retry policies. Use fields or lenses to update.
+-- | Initial, default retry status. Use fields or lenses to update.
 defaultRetryStatus :: RetryStatus
 defaultRetryStatus = RetryStatus 0 0 Nothing
 
@@ -444,8 +449,29 @@ retrying  :: MonadIO m
           -> (RetryStatus -> m b)
           -- ^ Action to run
           -> m b
-retrying policy chk f =
-    retryingDynamic policy (\rs -> fmap toRetryAction . chk rs) f
+retrying = resumeRetrying defaultRetryStatus
+
+
+-------------------------------------------------------------------------------
+-- | A variant of 'retrying' that allows specifying the initial
+-- 'RetryStatus' so that the retrying operation may pick up where it left
+-- off in regards to its retry policy.
+resumeRetrying
+    :: MonadIO m
+    => RetryStatus
+    -> RetryPolicyM m
+    -> (RetryStatus -> b -> m Bool)
+    -- ^ An action to check whether the result should be retried.
+    -- If True, we delay and retry the operation.
+    -> (RetryStatus -> m b)
+    -- ^ Action to run
+    -> m b
+resumeRetrying retryStatus policy chk f =
+    resumeRetryingDynamic
+      retryStatus
+      policy
+      (\rs -> fmap toRetryAction . chk rs)
+      f
 
 
 -------------------------------------------------------------------------------
@@ -479,7 +505,25 @@ retryingDynamic
     -> (RetryStatus -> m b)
     -- ^ Action to run
     -> m b
-retryingDynamic policy chk f = go defaultRetryStatus
+retryingDynamic = resumeRetryingDynamic defaultRetryStatus
+
+
+-------------------------------------------------------------------------------
+-- | A variant of 'retryingDynamic' that allows specifying the initial
+-- 'RetryStatus' so that a retrying operation may pick up where it left off
+-- in regards to its retry policy.
+resumeRetryingDynamic
+    :: MonadIO m
+    => RetryStatus
+    -> RetryPolicyM m
+    -> (RetryStatus -> b -> m RetryAction)
+    -- ^ An action to check whether the result should be retried.
+    -- The returned 'RetryAction' determines how/if a retry is performed.
+    -- See documentation on 'RetryAction'.
+    -> (RetryStatus -> m b)
+    -- ^ Action to run
+    -> m b
+resumeRetryingDynamic retryStatus policy chk f = go retryStatus
   where
     go s = do
         res <- f s
@@ -527,7 +571,24 @@ recoverAll
          => RetryPolicyM m
          -> (RetryStatus -> m a)
          -> m a
-recoverAll set f = recovering set handlers f
+recoverAll = resumeRecoverAll defaultRetryStatus
+
+
+-------------------------------------------------------------------------------
+-- | A variant of 'recoverAll' that allows specifying the initial
+-- 'RetryStatus' so that a recovering operation may pick up where it left
+-- off in regards to its retry policy.
+resumeRecoverAll
+#if MIN_VERSION_exceptions(0, 6, 0)
+         :: (MonadIO m, MonadMask m)
+#else
+         :: (MonadIO m, MonadCatch m)
+#endif
+         => RetryStatus
+         -> RetryPolicyM m
+         -> (RetryStatus -> m a)
+         -> m a
+resumeRecoverAll retryStatus set f = resumeRecovering retryStatus set handlers f
     where
       handlers = skipAsyncExceptions ++ [h]
       h _ = Handler $ \ (_ :: SomeException) -> return True
@@ -578,11 +639,37 @@ recovering
     -> (RetryStatus -> m a)
     -- ^ Action to perform
     -> m a
-recovering policy hs f =
-    recoveringDynamic policy hs' f
+recovering = resumeRecovering defaultRetryStatus
+
+
+-------------------------------------------------------------------------------
+-- | A variant of 'recovering' that allows specifying the initial
+-- 'RetryStatus' so that a recovering operation may pick up where it left
+-- off in regards to its retry policy.
+resumeRecovering
+#if MIN_VERSION_exceptions(0, 6, 0)
+    :: (MonadIO m, MonadMask m)
+#else
+    :: (MonadIO m, MonadCatch m)
+#endif
+    => RetryStatus
+    -> RetryPolicyM m
+    -- ^ Just use 'retryPolicyDefault' for default settings
+    -> [(RetryStatus -> Handler m Bool)]
+    -- ^ Should a given exception be retried? Action will be
+    -- retried if this returns True *and* the policy allows it.
+    -- This action will be consulted first even if the policy
+    -- later blocks it.
+    -> (RetryStatus -> m a)
+    -- ^ Action to perform
+    -> m a
+resumeRecovering retryStatus policy hs f =
+    resumeRecoveringDynamic retryStatus policy hs' f
   where
     hs' = map (fmap toRetryAction .) hs
 
+
+-------------------------------------------------------------------------------
 -- | The difference between this and 'recovering' is the same as
 --  the difference between 'retryingDynamic' and 'retrying'.
 recoveringDynamic
@@ -602,7 +689,32 @@ recoveringDynamic
     -> (RetryStatus -> m a)
     -- ^ Action to perform
     -> m a
-recoveringDynamic policy hs f = mask $ \restore -> go restore defaultRetryStatus
+recoveringDynamic = resumeRecoveringDynamic defaultRetryStatus
+
+
+-------------------------------------------------------------------------------
+-- | A variant of 'recoveringDynamic' that allows specifying the initial
+-- 'RetryStatus' so that a recovering operation may pick up where it left
+-- off in regards to its retry policy.
+resumeRecoveringDynamic
+#if MIN_VERSION_exceptions(0, 6, 0)
+    :: (MonadIO m, MonadMask m)
+#else
+    :: (MonadIO m, MonadCatch m)
+#endif
+    => RetryStatus
+    -> RetryPolicyM m
+    -- ^ Just use 'retryPolicyDefault' for default settings
+    -> [(RetryStatus -> Handler m RetryAction)]
+    -- ^ Should a given exception be retried? Action will be
+    -- retried if this returns either 'ConsultPolicy' or
+    -- 'ConsultPolicyOverrideDelay' *and* the policy allows it.
+    -- This action will be consulted first even if the policy
+    -- later blocks it.
+    -> (RetryStatus -> m a)
+    -- ^ Action to perform
+    -> m a
+resumeRecoveringDynamic retryStatus policy hs f = mask $ \restore -> go restore retryStatus
     where
       go restore = loop
         where
@@ -627,7 +739,6 @@ recoveringDynamic policy hs f = mask $ \restore -> go restore defaultRetryStatus
                       ConsultPolicyOverrideDelay delay ->
                         consultPolicy $ modifyRetryPolicyDelay (const delay) policy
                 | otherwise = recover e hs'
-
 
 
 -------------------------------------------------------------------------------
