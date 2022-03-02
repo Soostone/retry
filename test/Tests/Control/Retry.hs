@@ -2,6 +2,7 @@
 {-# LANGUAGE DeriveDataTypeable  #-}
 {-# LANGUAGE LambdaCase  #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE FlexibleContexts #-}
 module Tests.Control.Retry
     ( tests
     ) where
@@ -12,8 +13,9 @@ import           Control.Concurrent
 import           Control.Concurrent.STM      as STM
 import qualified Control.Exception           as EX
 import           Control.Monad.Catch
+import           Control.Monad.Except
 import           Control.Monad.Identity
-import           Control.Monad.IO.Class
+import           Control.Monad.IO.Class      as MIO
 import           Control.Monad.Writer.Strict
 import           Data.Either
 import           Data.IORef
@@ -48,6 +50,7 @@ tests = testGroup "Control.Retry"
   , limitRetriesByCumulativeDelayTests
   , overridingDelayTests
   , resumableTests
+  , retryOnErrorTests
   ]
 
 
@@ -451,6 +454,22 @@ resumableTests = testGroup "resumable"
 
 
 -------------------------------------------------------------------------------
+retryOnErrorTests :: TestTree
+retryOnErrorTests = testGroup "retryOnError"
+  [ testCase "passes in the error type" $ do
+      errCalls <- newTVarIO []
+      let policy = limitRetries 2
+      let shouldWeRetry _retryStat e = do
+            liftIO (atomically (modifyTVar' errCalls (++ [e])))
+            return True
+      let action rs = (throwError ("boom" ++ show (rsIterNumber rs)))
+      res <- runExceptT (retryOnError policy shouldWeRetry action)
+      res @?= (Left "boom2" :: Either String ())
+      calls <- atomically (readTVar errCalls)
+      calls @?= ["boom0", "boom1", "boom2"]
+  ]
+
+-------------------------------------------------------------------------------
 nextStatusUsingPolicy :: RetryPolicyM IO -> RetryStatus -> IO RetryStatus
 nextStatusUsingPolicy policy status = do
   applyPolicy policy status >>= \case
@@ -513,7 +532,7 @@ genRetryStatus = do
 -------------------------------------------------------------------------------
 -- | Generate an arbitrary 'RetryPolicy' without any limits applied.
 genPolicyNoLimit
-    :: forall mg mr. (MonadGen mg, MonadIO mr)
+    :: forall mg mr. (MonadGen mg, MIO.MonadIO mr)
     => Range Int
     -> mg (RetryPolicyM mr)
 genPolicyNoLimit durationRange =

@@ -1,3 +1,6 @@
+0.9.2.0
+* Add `retryOnError` [PR 44](https://github.com/Soostone/retry/pull/44)
+
 0.9.1.0
 * Add resumable retry/recover variants:
   * `resumeRetrying`

@@ -4,6 +4,7 @@
 {-# LANGUAGE MagicHash             #-}
 {-# LANGUAGE RankNTypes            #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE TupleSections         #-}
 {-# LANGUAGE UnboxedTuples         #-}
 {-# LANGUAGE ViewPatterns          #-}
 
@@ -59,6 +60,7 @@ module Control.Retry
     , skipAsyncExceptions
     , logRetries
     , defaultLogMsg
+    , retryOnError
     -- ** Resumable variants
     , resumeRetrying
     , resumeRetryingDynamic
@@ -93,8 +95,8 @@ import           Control.Exception (AsyncException)
 #endif
 import           Control.Monad
 import           Control.Monad.Catch
-import           Control.Monad.IO.Class
-import           Control.Monad.Trans.Class
+import           Control.Monad.Except
+import           Control.Monad.IO.Class as MIO
 import           Control.Monad.Trans.Maybe
 import           Control.Monad.Trans.State
 import           Data.List (foldl')
@@ -280,7 +282,7 @@ applyPolicy (RetryPolicyM policy) s = do
 -- | Apply policy and delay by its amount if it results in a retry.
 -- Return updated status.
 applyAndDelay
-    :: MonadIO m
+    :: MIO.MonadIO m
     => RetryPolicyM m
     -> RetryStatus
     -> m (Maybe RetryStatus)
@@ -814,6 +816,31 @@ defaultLogMsg shouldRetry err status =
   where
     iter = show $ rsIterNumber status
     nextMsg = if shouldRetry then "Retrying." else "Crashing."
+
+
+-------------------------------------------------------------------------------
+retryOnError
+    :: (Functor m, MonadIO m, MonadError e m)
+    => RetryPolicyM m
+    -- ^ Policy
+    -> (RetryStatus -> e -> m Bool)
+    -- ^ Should an error be retried?
+    -> (RetryStatus -> m a)
+    -- ^ Action to perform
+    -> m a
+retryOnError policy chk f = go defaultRetryStatus
+  where
+    go stat = do
+      res <- (Right <$> f stat) `catchError` (\e -> Left . (e, ) <$> chk stat e)
+      case res of
+        Right x -> return x
+        Left (e, True) -> do
+          mstat' <- applyAndDelay policy stat
+          case mstat' of
+            Just stat' -> do
+              go $! stat'
+            Nothing -> throwError e
+        Left (e, False) -> throwError e
 
 
 -------------------------------------------------------------------------------

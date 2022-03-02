@@ -11,7 +11,6 @@ The main purpose of this package is to make it easy to work reliably
 with IO and similar actions that often fail. Common examples are
 database queries and large file uploads.
 
-
 ## Documentation
 
 Please see haddocks for documentation.
@@ -24,7 +23,6 @@ See [https://github.com/Soostone/retry/blob/master/changelog.md](changelog.md).
 
 Ozgun Ataman, Soostone Inc
 
-
 ## Contributors
 
 Contributors, please list yourself here.
@@ -33,5 +31,5 @@ Contributors, please list yourself here.
 - John Wiegley
 - Michael Snoyman
 - Michael Xavier
+- Toralf Wittner
 - Marco Zocca (@ocramz)
-
