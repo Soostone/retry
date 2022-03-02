@@ -1,3 +1,73 @@
+0.9.2.0
+* Add `retryOnError` [PR 44](https://github.com/Soostone/retry/pull/44)
+
+0.9.1.0
+* Add resumable retry/recover variants:
+  * `resumeRetrying`
+  * `resumeRetryingDynamic`
+  * `resumeRecovering`
+  * `resumeRecoveringDynamic`
+  * `resumeRecoverAll`
+
+0.9.0.0
+* Replace several uses of RetryPolicy type alias with RetryPolicyM m for better
+  GHC 9 compat.
+
+0.8.1.2
+* Set lower bound on base to >= 4.8
+
+0.8.1.1
+* Loosen upper bounds
+
+0.8.1.0
+* Add `retryingDynamic` and `recoveringDynamic`. [PR 65](https://github.com/Soostone/retry/pull/65)
+
+0.8.0.2
+* Update docs for default retry policy. [PR 64](https://github.com/Soostone/retry/pull/64)
+
+0.8.0.1
+* Loosen upper bounds
+
+0.8.0.0
+* Remove dependency on data-default-class
+
+0.7.7.0
+* Add `natTransformRetryPolicy`
+
+0.7.6.3
+* Documentation fix on `recoverAll`
+
+0.7.6.2
+* Loosen bounds on exceptions again.
+
+0.7.6.1
+* Loosen bounds on exceptions.
+
+0.7.6.0
+* Clarify the semantics of `limitRetriesByDelay`.
+* Add `limitRetriesByCumulativeDelay`
+
+0.7.5.1
+* Improve haddocks for fullJitterBackoff.
+
+0.7.5.0
+* Add Semigroup instance when the Semigroup class is available through base.
+
+0.7.4.3
+* Loosen dependency upper bounds.
+
+0.7.5
+* Add skipAsyncExceptions helper function
+
+0.7.4.2
+* Loosen HUnit dependency for tests.
+
+0.7.4.1
+* Loosen QuickCheck dependency for tests.
+
+0.7.4
+* Widen transformers dependency
+
 0.7.3
 * Widen ghc-prim dependency for GHC 8
 

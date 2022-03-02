@@ -12,13 +12,17 @@ addons:
 
 # The different configurations we want to test. You could also do things like
 # change flags or use --stack-yaml to point to a different file.
-env:
-- ARGS="--resolver=lts-2"
-- ARGS="--resolver=lts-3"
-- ARGS="--resolver=lts-4"
-- ARGS="--resolver=lts-5"
-- ARGS="--resolver=lts-6"
-- ARGS="--resolver=nightly"
+matrix:
+  include:
+    env:
+    - ARGS="--resolver=lts-15"
+    - ARGS="--resolver=lts-16"
+    - ARGS="--resolver=lts-17"
+    # latest LTS at the time
+    - ARGS="--resolver=lts"
+    - ARGS="--resolver=nightly"
+  allowed_failures:
+    - ARGS="--resolver=nightly"
 
 before_install:
 # Download and unpack the stack executable
@@ -30,7 +34,7 @@ before_install:
 # executables, and test suites, and runs the test suites. --no-terminal works
 # around some quirks in Travis's terminal implementation.
 script:
-  - stack $ARGS setup
+  - travis_retry stack $ARGS setup
   - stack $ARGS test --no-terminal --haddock --no-haddock-deps
   - stack $ARGS bench
   - stack $ARGS build
@@ -40,3 +44,4 @@ script:
 cache:
   directories:
   - $HOME/.stack
+  - .stack-work

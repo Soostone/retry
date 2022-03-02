@@ -1,6 +1,8 @@
-resolver: lts-6.0
+resolver: lts-18.27
 packages:
-- '.'
+  - "."
 extra-deps: []
-flags: {}
+flags:
+  retry:
+    lib-Werror: true
 extra-package-dbs: []
