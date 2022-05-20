@@ -97,6 +97,7 @@ import           Control.Monad
 import           Control.Monad.Catch
 import           Control.Monad.Except
 import           Control.Monad.IO.Class as MIO
+import           Control.Monad.Trans.Class as TC
 import           Control.Monad.Trans.Maybe
 import           Control.Monad.Trans.State
 import           Data.List (foldl')
@@ -850,7 +851,7 @@ retryOnError policy chk f = go defaultRetryStatus
 simulatePolicy :: Monad m => Int -> RetryPolicyM m -> m [(Int, Maybe Int)]
 simulatePolicy n (RetryPolicyM f) = flip evalStateT defaultRetryStatus $ forM [0..n] $ \i -> do
   stat <- get
-  delay <- lift (f stat)
+  delay <- TC.lift (f stat)
   put $! stat
     { rsIterNumber = i + 1
     , rsCumulativeDelay = rsCumulativeDelay stat `boundedPlus` fromMaybe 0 delay
