@@ -1,3 +1,6 @@
+0.9.2.1
+* Use explicit import for `lift` which allows for mtl-2.3 compatibility [PR 80](https://github.com/Soostone/retry/pull/80)
+
 0.9.2.0
 * Add `retryOnError` [PR 44](https://github.com/Soostone/retry/pull/44)
 
