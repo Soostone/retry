@@ -1,3 +1,6 @@
+0.9.3.0
+* Add `UnliftIO.Retry` [PR 81](https://github.com/Soostone/retry/pull/81)
+
 0.9.2.1
 * Use explicit import for `lift` which allows for mtl-2.3 compatibility [PR 80](https://github.com/Soostone/retry/pull/80)
 

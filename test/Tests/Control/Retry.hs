@@ -5,6 +5,14 @@
 {-# LANGUAGE FlexibleContexts #-}
 module Tests.Control.Retry
     ( tests
+
+    -- * Used to test UnliftIO versions of the same functions
+    , recoveringTestsWith
+    , maskingStateTestsWith
+    , quadraticDelayTestsWith
+    , recoveringTest
+    , testHandlers
+    , testHandlersDynamic
     ) where
 
 -------------------------------------------------------------------------------
@@ -56,12 +64,19 @@ tests = testGroup "Control.Retry"
 
 -------------------------------------------------------------------------------
 recoveringTests :: TestTree
-recoveringTests = testGroup "recovering"
+recoveringTests = recoveringTestsWith recovering
+
+
+recoveringTestsWith
+    :: Monad m
+    => (RetryPolicyM m -> [RetryStatus -> Handler IO Bool] -> (a -> IO ()) -> IO ())
+    -> TestTree
+recoveringTestsWith recovering' = testGroup "recovering"
   [ testProperty "recovering test without quadratic retry delay" $ property $ do
       startTime <- liftIO getCurrentTime
       timeout <- forAll (Gen.int (Range.linear 0 15))
       retries <- forAll (Gen.int (Range.linear 0 50))
-      res <- liftIO $ try $ recovering
+      res <- liftIO $ try $ recovering'
         (constantDelay timeout <> limitRetries retries)
         testHandlers
         (const $ throwM (userError "booo"))
@@ -88,7 +103,7 @@ recoveringTests = testGroup "recovering"
 
       , testCase "recovers from custom exceptions" $ do
           f <- mkFailN Custom1 2
-          res <- try $ recovering
+          res <- try $ recovering'
             (constantDelay 5000 <> limitRetries 3)
             [const $ Handler $ \ Custom1 -> return shouldRetry]
             f
@@ -96,7 +111,7 @@ recoveringTests = testGroup "recovering"
 
       , testCase "fails beyond policy using custom exceptions" $ do
           f <- mkFailN Custom1 3
-          res <- try $ recovering
+          res <- try $ recovering'
             (constantDelay 5000 <> limitRetries 2)
             [const $ Handler $ \ Custom1 -> return shouldRetry]
             f
@@ -111,7 +126,7 @@ recoveringTests = testGroup "recovering"
 
       , testCase "does not recover from unhandled exceptions" $ do
           f <- mkFailN Custom2 2
-          res <- try $ recovering
+          res <- try $ recovering'
             (constantDelay 5000 <> limitRetries 5)
             [const $ Handler $ \ Custom1 -> return shouldRetry]
             f
@@ -120,7 +135,7 @@ recoveringTests = testGroup "recovering"
 
       , testCase "recovers in presence of multiple handlers" $ do
           f <- mkFailN Custom2 2
-          res <- try $ recovering
+          res <- try $ recovering'
             (constantDelay 5000 <> limitRetries 5)
             [ const $ Handler $ \ Custom1 -> return shouldRetry
             , const $ Handler $ \ Custom2 -> return shouldRetry ]
@@ -130,7 +145,7 @@ recoveringTests = testGroup "recovering"
 
       , testCase "general exceptions catch specific ones" $ do
           f <- mkFailN Custom2 2
-          res <- try $ recovering
+          res <- try $ recovering'
             (constantDelay 5000 <> limitRetries 5)
             [ const $ Handler $ \ (_::SomeException) -> return shouldRetry ]
             f
@@ -139,7 +154,7 @@ recoveringTests = testGroup "recovering"
 
       , testCase "(redundant) even general catchers don't go beyond policy" $ do
           f <- mkFailN Custom2 3
-          res <- try $ recovering
+          res <- try $ recovering'
             (constantDelay 5000 <> limitRetries 2)
             [ const $ Handler $ \ (_::SomeException) -> return shouldRetry ]
             f
@@ -149,7 +164,7 @@ recoveringTests = testGroup "recovering"
       , testCase "rethrows in presence of failed exception casts" $ do
           f <- mkFailN Custom2 3
           final <- try $ do
-            res <- try $ recovering
+            res <- try $ recovering'
               (constantDelay 5000 <> limitRetries 2)
               [ const $ Handler $ \ (_::SomeException) -> return shouldRetry ]
               f
@@ -230,10 +245,17 @@ policyTransformersTests = testGroup "policy transformers"
 
 -------------------------------------------------------------------------------
 maskingStateTests :: TestTree
-maskingStateTests = testGroup "masking state"
+maskingStateTests = maskingStateTestsWith recovering
+
+
+maskingStateTestsWith
+    :: Monad m
+    => (RetryPolicyM m -> [RetryStatus -> Handler IO Bool] -> (a -> IO b) -> IO ())
+    -> TestTree
+maskingStateTestsWith recovering' = testGroup "masking state"
   [ testCase "shouldn't change masking state in a recovered action" $ do
       maskingState <- EX.getMaskingState
-      final <- try $ recovering retryPolicyDefault testHandlers $ const $ do
+      final <- try $ recovering' retryPolicyDefault testHandlers $ const $ do
         maskingState' <- EX.getMaskingState
         maskingState' @?= maskingState
         fail "Retrying..."
@@ -248,7 +270,7 @@ maskingStateTests = testGroup "masking state"
                 maskingState @?= EX.MaskedInterruptible
                 return shouldRetry
             ]
-      final <- try $ recovering retryPolicyDefault checkMaskingStateHandlers $ const $ fail "Retrying..."
+      final <- try $ recovering' retryPolicyDefault checkMaskingStateHandlers $ const $ fail "Retrying..."
       assertBool
         ("Expected EX.IOException but didn't get one")
         (isLeft (final :: Either EX.IOException ()))
@@ -304,12 +326,19 @@ limitRetriesByCumulativeDelayTests = testGroup "limitRetriesByCumulativeDelay"
 
 -------------------------------------------------------------------------------
 quadraticDelayTests :: TestTree
-quadraticDelayTests = testGroup "quadratic delay"
+quadraticDelayTests = quadraticDelayTestsWith recovering
+
+
+quadraticDelayTestsWith
+    :: Monad m
+    => (RetryPolicyM m -> [RetryStatus -> Handler IO Bool] -> (a -> IO b) -> IO ())
+    -> TestTree
+quadraticDelayTestsWith recovering' = testGroup "quadratic delay"
   [ testProperty "recovering test with quadratic retry delay" $ property $ do
       startTime <- liftIO getCurrentTime
       timeout <- forAll (Gen.int (Range.linear 0 15))
       retries <- forAll (Gen.int (Range.linear 0 8))
-      res <- liftIO $ try $ recovering
+      res <- liftIO $ try $ recovering'
         (exponentialBackoff timeout <> limitRetries retries)
         [const $ Handler (\(_::SomeException) -> return True)]
         (const $ throwM (userError "booo"))
@@ -389,68 +418,68 @@ resumableTests = testGroup "resumable"
             ()
       ]
   ]
-  where
-    retryingTest
-      :: (RetryStatus -> RetryPolicyM IO -> p -> (RetryStatus -> IO ()) -> IO ())
-      -> p
-      -> IO ()
-    retryingTest resumableOp isRetryNeeded = do
-      counterRef <- newIORef (0 :: Int)
 
-      let go policy status = do
-            atomicWriteIORef counterRef 0
-            resumableOp
-              status
-              policy
-              isRetryNeeded
-              (const $ atomicModifyIORef' counterRef $ \n -> (1 + n, ()))
+retryingTest
+  :: (RetryStatus -> RetryPolicyM IO -> p -> (RetryStatus -> IO ()) -> IO ())
+  -> p
+  -> IO ()
+retryingTest resumableOp isRetryNeeded = do
+  counterRef <- newIORef (0 :: Int)
 
-      let policy = limitRetries 2
-      let nextStatus = nextStatusUsingPolicy policy
-
-      go policy defaultRetryStatus
-      (3 @=?) =<< readIORef counterRef
-
-      go policy =<< nextStatus defaultRetryStatus
-      (2 @=?) =<< readIORef counterRef
-
-      go policy =<< nextStatus =<< nextStatus defaultRetryStatus
-      (1 @=?) =<< readIORef counterRef
-
-    recoveringTest
-      :: (RetryStatus -> RetryPolicyM IO -> handlers -> (RetryStatus -> IO ()) -> IO ())
-      -> handlers
-      -> IO ()
-    recoveringTest resumableOp handlers = do
-      counterRef <- newIORef (0 :: Int)
-
-      let go policy status = do
-            action <- do
-              mkFailUntilIO
-                (\_ -> atomicModifyIORef' counterRef $ \n -> (1 + n, False))
-                Custom1
-            try $ resumableOp status policy handlers action
-
-      let policy = limitRetries 2
-      let nextStatus = nextStatusUsingPolicy policy
-
-      do
+  let go policy status = do
         atomicWriteIORef counterRef 0
-        res <- go policy defaultRetryStatus
-        res @?= Left Custom1
-        (3 @=?) =<< readIORef counterRef
+        resumableOp
+          status
+          policy
+          isRetryNeeded
+          (const $ atomicModifyIORef' counterRef $ \n -> (1 + n, ()))
 
-      do
-        atomicWriteIORef counterRef 0
-        res <- go policy =<< nextStatus defaultRetryStatus
-        res @?= Left Custom1
-        (2 @=?) =<< readIORef counterRef
+  let policy = limitRetries 2
+  let nextStatus = nextStatusUsingPolicy policy
 
-      do
-        atomicWriteIORef counterRef 0
-        res <- go policy =<< nextStatus =<< nextStatus defaultRetryStatus
-        res @?= Left Custom1
-        (1 @=?) =<< readIORef counterRef
+  go policy defaultRetryStatus
+  (3 @=?) =<< readIORef counterRef
+
+  go policy =<< nextStatus defaultRetryStatus
+  (2 @=?) =<< readIORef counterRef
+
+  go policy =<< nextStatus =<< nextStatus defaultRetryStatus
+  (1 @=?) =<< readIORef counterRef
+
+recoveringTest
+  :: (RetryStatus -> RetryPolicyM IO -> handlers -> (RetryStatus -> IO ()) -> IO ())
+  -> handlers
+  -> IO ()
+recoveringTest resumableOp handlers = do
+  counterRef <- newIORef (0 :: Int)
+
+  let go policy status = do
+        action <- do
+          mkFailUntilIO
+            (\_ -> atomicModifyIORef' counterRef $ \n -> (1 + n, False))
+            Custom1
+        try $ resumableOp status policy handlers action
+
+  let policy = limitRetries 2
+  let nextStatus = nextStatusUsingPolicy policy
+
+  do
+    atomicWriteIORef counterRef 0
+    res <- go policy defaultRetryStatus
+    res @?= Left Custom1
+    (3 @=?) =<< readIORef counterRef
+
+  do
+    atomicWriteIORef counterRef 0
+    res <- go policy =<< nextStatus defaultRetryStatus
+    res @?= Left Custom1
+    (2 @=?) =<< readIORef counterRef
+
+  do
+    atomicWriteIORef counterRef 0
+    res <- go policy =<< nextStatus =<< nextStatus defaultRetryStatus
+    res @?= Left Custom1
+    (1 @=?) =<< readIORef counterRef
 
 
 -------------------------------------------------------------------------------
