@@ -60,7 +60,9 @@ test-suite test
     hs-source-dirs: test,src
     ghc-options:    -threaded
     other-modules:  Control.Retry
+                    UnliftIO.Retry
                     Tests.Control.Retry
+                    Tests.UnliftIO.Retry
     build-depends:
         base              ==4.*
       , exceptions
@@ -76,6 +78,7 @@ test-suite test
       , ghc-prim
       , mtl
       , mtl-compat
+      , unliftio-core
     default-language: Haskell2010
 
     if flag(lib-Werror)
