@@ -1,3 +1,7 @@
+0.9.3.1
+* Resolve test warnings [PR 83](https://github.com/Soostone/retry/pull/83)
+
+
 0.9.3.0
 * Add `UnliftIO.Retry` [PR 81](https://github.com/Soostone/retry/pull/81)
 
