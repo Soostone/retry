@@ -20,6 +20,7 @@ import           Control.Applicative
 import           Control.Concurrent
 import           Control.Concurrent.STM      as STM
 import qualified Control.Exception           as EX
+import           Control.Monad               as M ( forM_ )
 import           Control.Monad.Catch
 import           Control.Monad.Except
 import           Control.Monad.Identity
@@ -285,8 +286,8 @@ capDelayTests = testGroup "capDelay"
       cap <- forAll (Gen.int (Range.linear 1 maxBound))
       let policy = capDelay cap (limitRetries retries)
       let delays = runIdentity (simulatePolicy (retries + 1) policy)
-      let Just lastDelay = lookup (retries - 1) delays
-      let Just gaveUp = lookup retries delays
+      let lastDelay = fromMaybe (error "impossible: empty delays") (lookup (retries - 1) delays)
+      let gaveUp = fromMaybe (error "impossible: empty delays") (lookup retries delays)
       let noDelay = 0
       lastDelay === Just noDelay
       gaveUp === Nothing
@@ -388,7 +389,7 @@ overridingDelayTests = testGroup "overriding delay"
         (handler delays)
         (action delays)
       let expectedDelays = map microsToNominalDiffTime delays
-      forM_ (zip (diffTimes measuredTimestamps) expectedDelays) $
+      M.forM_ (zip (diffTimes measuredTimestamps) expectedDelays) $
         \(actual, expected) -> diff actual (>=) expected
 
 
