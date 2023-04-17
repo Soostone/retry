@@ -20,6 +20,7 @@ import           Control.Applicative
 import           Control.Concurrent
 import           Control.Concurrent.STM      as STM
 import qualified Control.Exception           as EX
+import           Control.Monad               ( forM_ )
 import           Control.Monad.Catch
 import           Control.Monad.Except
 import           Control.Monad.Identity
